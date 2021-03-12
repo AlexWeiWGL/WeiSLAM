@@ -59,7 +59,95 @@ namespace WeiSLAM{
                 const vector<Eigen::Vector3d> &pts, const vector<Eigen::Vector3d> & vel,
                 const cv::Mat &camera, const BirdEyeVizProperties &viz_props, cv::Mat &ref_image
             );
-            void TransformPointToScaledFrustum(double &pose_x, double &pose_z, const )
+            void TransformPointToScaledFrustum(double &pose_x, double &pose_z, const BirdEyeVizProperties &viz_props);
+
+            cv::Mat ObjPoseParsingKT(const vector<float> &vObjPose_gt);
+            cv::Mat ObePoseParsingOx(const vector<float> &vObjPose_gt);
+
+            cv::Mat GetInitModelCam(const vector<int> &MatchId, vector<int> &MatchId_sub);
+            cv::Mat GetInitModelObj(const vector<int> &ObjId, vector<int> &ObjId_sub, const int objid);
+
+            void StackObjInfo(vector<cv::KeyPoint> &FeatDynObj, vector<float> &DepDynObj,
+                              vector<int> &FeatLabObj);
+
+            vector<vector<pair<int, int>>> GetStaticTrack();
+            vector<vector<pair<int, int>>> GetDynamicTrack();
+            vector<vector<pair<int, int>>> GetDynamicTrackNew();
+            vector<vector<int>> GetObjTrackTime(vector<vector<int>> &ObjTrackLab, vector<vector<int>> &ObjSemanticLab,
+                                                vector<vector<int>> &vnSMLabGT);
+            
+            void GetMetricError(const vector<cv::Mat> &CamPose, vector<vector<cv::Mat>> &RigMot, const vector<vector<cv::Mat>> &ObjPosePre,
+                                const vector<cv::Mat> &CamPose_gt, const vector<vector<cv::Mat>> &RigMot_gt,
+                                const vector<vector<bool>> &ObjStat);
+            void PlotMetricError(const vector<cv::Mat> &CamPose, const vector<vector<cv::Mat>> &RigMot, const vector<vector<cv::Mat>> &ObjPosePre,
+                                 const vector<cv::Mat> &CamPse_gt, const vector<vector<cv::Mat>> &RigMot_gt,
+                                 const vector<vector<bool>> &ObjStat);
+            void GetVelocityError(const vector<vector<cv::Mat>> &RigMot, const vector<vector<cv::Mat>> &PointDyn,
+                                  const vector<vector<int>> &FeaLab, const vector<vector<int>> &RMLab,
+                                  const vector<vector<float>> &Velo_gt, const vector<vector<int>> &TmpMatch,
+                                  const vector<vector<bool>> &ObjStat);
+
+            void RenewFrameInfo(const std::vector<int> &TM_sta);
+            void UpdateMask();
+
+        public:
+            enum eTrackingState{
+                NO_IMAGES_YET=0,
+                NOT_INITIALIZED=1,
+                OK=2,
+            };
+            eTrackingState mState;
+            eTrackingState mLastProcessedState;
+
+            enum eDataState{
+                OMD=1,
+                KITTI=2,
+                VirtualKITTI=3,
+            };
+
+            eDataState mTestData;
+
+            //input sensor
+            int mSensor;
+
+            //current Frame
+            Frame currentFrame;
+            cv::Mat mImGray;
+
+            cv::Mat mImGrayLast;
+
+            cv::Mat mFlowMap, mFlowMapLast;
+            cv::Mat mDepthMap;
+            cv::Mat mSegMap, mSegMapLast;
+
+            //transfer the ground truth to use identity matrix as origin
+            cv::Mat mOriginInv;
+            
+            //Store temperal matching feature index
+            bool bFrame2Frame, bFirstFrame;
+            vector<int> TemeralMatch, TemperalMatch_subset;
+            vector<cv::KeyPoint> mvKeysLastFrame, mvKeysCurrentFrame;
+
+            vector<cv::KeyPoint> mvTmpObjKeys;
+            vector<float> mvTmpObjectDepth;
+            vector<int> mvTmpSemObjLabel;
+            vector<cv::Point2f> mvTmpObjFlowNext;
+            vector<cv::KeyPoint> mvTmpObjCorres;
+
+            //re-projection error
+            vector<float> repro_e;
+
+            //save current frame ID
+            int f_id;
+
+            //save the global Tracking ID;
+            int max_id;
+
+            //save stop frame
+            int stopFrame;
+
+
+
     };
 }
 #endif
