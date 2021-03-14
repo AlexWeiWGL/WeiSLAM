@@ -28,9 +28,9 @@ namespace WeiSLAM{
             
             ~ORBextractor(){}
 
-            int operator()(cv::InputArray _image, cv::InputArray _mask,
+            void operator()(cv::InputArray _image, cv::InputArray _mask,
                            std::vector<cv::KeyPoint>& _keypoints,
-                           cv::OutputArray _descriptors, std::vector<int> &vLappingArea);
+                           cv::OutputArray _descriptors);
             
             int inline GetLevels(){
                 return nlevels;
