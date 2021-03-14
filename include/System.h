@@ -18,11 +18,13 @@ namespace WeiSLAM{
         public:
             enum eSensor{
                 MONOCULAR = 0,
+                STEREO = 1,
+                RGBD = 2
             };
 
             System(const string &strSettingsFile, const eSensor sensor);
 
-            cv::Mat TrackRGBD(const cv::Mat &im, const cv::Mat &flowmap, const cv::Mat &masksem,
+            cv::Mat TrackRGBD(const cv::Mat &im, const cv::Mat &imRGB, const cv::Mat &flowmap, const cv::Mat &masksem,
                               const cv::Mat &mTcw_gt, const vector<vector<float>> &vObjectPose_gt, const double &timestamp,
                               cv::Mat &imTraj, const int &nImage);
             

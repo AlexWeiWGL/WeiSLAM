@@ -145,9 +145,59 @@ namespace WeiSLAM{
 
             //save stop frame
             int stopFrame;
+            
+            //save optimization decision
+            bool bLocalBatch;
+            bool bGlobalBatch;
+            //whether use joint optic-flow formulation
+            bool bJoint;
 
+            //window size and overlapping size for local batch optimization
+            int nWINDOW_SIZE, nOVERLAP_SIZE;
 
+            //Max Tracking points on background and object in each frame
+            int nMaxTrackPointBG, nMaxTrackPointOBJ;
 
+            //Scene Flow magnitude and distribution threshold
+            float fsFMgThres, fSFDsThres;
+            
+            //save timing values
+            vector<float> all_timing;
+
+            //use sampled feature or detected feature for background
+            int nUseSampleFea;
+
+        protected:
+            void Track();
+
+            void Initialization();
+
+            ORBextractor* mpORBextractorLeft, *mpORBextractorRight;
+
+            System* mpSystem;
+
+            Map* mpMap;
+
+            cv::Mat mK;
+            cv::Mat mDistCoef;
+            float mbf;
+
+            float mThDepth;
+            float mThDepthObj;
+
+            //the depth map scale factor
+            float mDepthMapFactor;
+
+            //current matches in frame
+            int mnMatchesInliers;
+            
+            //Last frame info
+            Frame mLastFrame;
+
+            //motion model
+            cv::Mat mVelocity;
+
+            bool mbRGB;
     };
 }
 #endif
