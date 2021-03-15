@@ -62,7 +62,7 @@ namespace WeiSLAM{
             void TransformPointToScaledFrustum(double &pose_x, double &pose_z, const BirdEyeVizProperties &viz_props);
 
             cv::Mat ObjPoseParsingKT(const vector<float> &vObjPose_gt);
-            cv::Mat ObePoseParsingOx(const vector<float> &vObjPose_gt);
+            cv::Mat ObjPoseParsingOx(const vector<float> &vObjPose_gt);
 
             cv::Mat GetInitModelCam(const vector<int> &MatchId, vector<int> &MatchId_sub);
             cv::Mat GetInitModelObj(const vector<int> &ObjId, vector<int> &ObjId_sub, const int objid);
@@ -182,6 +182,8 @@ namespace WeiSLAM{
             cv::Mat mDistCoef;
             float mbf;
 
+            //threshold close/far points
+            //points seen as close by the stereo/RGBD sensor are considered reliable
             float mThDepth;
             float mThDepthObj;
 

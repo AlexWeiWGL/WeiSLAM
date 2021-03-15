@@ -162,4 +162,20 @@ namespace WeiSLAM{
 
         return v_eular;
     }
+
+    cv::Mat Converter::toInvMatrix(const cv::Mat &T){
+        cv::Mat T_inv = cv::Mat::eye(4, 4, CV_32F);
+
+        const cv::Mat R = T.rowRange(0,3).colRange(0, 3);
+        const cv::Mat t = T.rowRange(0,3).col(3);
+        cv::Mat t_inv = -R.t()*t;
+        cv::Mat R_inv = R.t();
+
+        cv::Mat tmp_R = T_inv.rowRange(0,3).colRange(0,3);
+        R_inv.copyTo(tmp_R);
+        cv::Mat tmp_t = T_inv.rowRange(0, 3).col(3);
+        t_inv.copyTo(tmp_t);
+
+        return T_inv;
+    }
 }
