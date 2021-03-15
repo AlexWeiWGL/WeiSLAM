@@ -1,4 +1,3 @@
-
 #ifndef ORBEXTRACTOR_H
 #define ORBEXTRACTOR_H
 

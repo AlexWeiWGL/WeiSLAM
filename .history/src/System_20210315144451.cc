@@ -152,11 +152,5 @@ namespace WeiSLAM{
                 cout << "(" << j << "): " << avg_timing[j]/All_timing.size() << " ";
         }
         cout << endl;
-
-        float avg_lba_timing = 0;
-        for(int i=0; i < LBA_timing.size(); ++i)
-            avg_lba_timing = avg_lba_timing + LBA_timing[i];
-        cout << "Time of local bundle adjustment: " << avg_lba_timing/LBA_timing.size() << endl;
-    
     }
 }

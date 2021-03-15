@@ -46,8 +46,8 @@ find_package(Pangolin REQUIRED)
 
 include_directories(
 ${PROJECT_SOURCE_DIR}
-${PROJECT_SOURCE_DIR}/include
-${PROJECT_SOURCE_DIR}/include/CameraModels
+${PROJECT_SOURCE_DIR}/include/
+${PROJECT_SOURCE_DIR}/src/
 ${EIGEN3_INCLUDE_DIR}
 ${Pangolin_INCLUDE_DIRS}
 )
@@ -55,10 +55,11 @@ ${Pangolin_INCLUDE_DIRS}
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/lib)
 
 aux_source_directory(src/ srcFiles)
+add_library(LIB ${srcFiles})
 
 add_subdirectory(Thirdparty/g2o)
 
-add_executable(${PROJECT_NAME} ${srcFiles})
+add_executable(${PROJECT_NAME} main.cc)
 
 target_link_libraries(${PROJECT_NAME}    
     ${OpenCV_LIBS}
@@ -68,6 +69,7 @@ target_link_libraries(${PROJECT_NAME}
     ${PROJECT_SOURCE_DIR}/Thirdparty/g2o/lib/libg2o.so
     -lboost_serialization
     -lcrypto
+    LIB
 )
 
 # Build examples
