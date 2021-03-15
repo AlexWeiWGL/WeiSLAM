@@ -159,7 +159,7 @@ namespace WeiSLAM{
             int nMaxTrackPointBG, nMaxTrackPointOBJ;
 
             //Scene Flow magnitude and distribution threshold
-            float fsFMgThres, fSFDsThres;
+            float fsFMgThres, fsFDsThres;
             
             //save timing values
             vector<float> all_timing;
