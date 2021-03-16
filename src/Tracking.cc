@@ -1087,6 +1087,443 @@ namespace WeiSLAM{
             }
         }
 
-        
+        //save object only from Posi()
+        vector<vector<int>> objId;
+        vector<int> sem_posi;   //semantaic label psotision for the objects
+        int shrin_thr_row = 0, shrin_thr_col = 0;
+        if(mTestData == KITTI)
+        {
+            shrin_thr_row = 25;
+            shrin_thr_col = 50;
+        }
+        for(int i=0; i < Posi.size(); ++i)
+        {
+            //shrink the image to get rid of object parts on the boundary
+            float count = 0, count_thres = 0.5;
+            for(int j=0; j<Posi[i].size(); ++j)
+            {
+                const float u = currentFrame.mvObjKeys[Posi[i][j]].pt.x;
+                const float v = currentFrame.mvObjKeys[Posi[i][j]].pt.y;
+                if(v < shrin_thr_row || v>(mImGray.rows-shrin_thr_row) || u < shrin_thr_col ||u>(mImGray.cols-shrin_thr_col))
+                    count = count + 1;
+            }
+            if(count/Posi[i].size()>count_thres)
+            {
+                for(int k=0; k<Posi[i].size(); ++k)
+                    currentFrame.objLabel[Posi[i][k]] = -1;
+                continue;
+            }
+            else
+            {
+                objId.push_back(Posi[i]);
+                sem_posi.push_back(UniLab[i]);
+            }
+        }
+
+        //check scene flow distribution of each object and keep the dynamic object
+        vector<vector<int>> ObjIdNew;
+        vector<int> SemPosNew, obj_dis_tres(sem_posi.size(), 0);
+        for(int i=0; i<objId.size(); ++i)
+        {
+            float obj_center_depth = 0, sf_min = 100, sf_max=0, sf_mean=0, sf_count=0;
+            vector<int>sf_range(10, 0);
+            for(int j=0; j<objId[i].size(); ++j)
+            {
+                obj_center_depth = obj_center_depth + currentFrame.mvObjDepth[objId[i][j]];
+
+                float sf_norm = sqrt(pow(currentFrame.flow_3d[objId[i][j]].x, 2) + pow(currentFrame.flow_3d[objId[i][j]].z, 2));
+                if(sf_norm < fsFMgThres)
+                    sf_count = sf_count + 1;
+                if(sf_norm < sf_min)
+                    sf_min = sf_norm;
+                if(sf_norm > sf_max)
+                    sf_max = sf_norm;
+                sf_mean = sf_mean + sf_norm;
+                {
+                    if(sf_norm>=0.0 && sf_norm < 0.05)
+                        sf_range[0] = sf_range[0] + 1;
+                    else if(sf_norm >= 0.05 && sf_norm < 0.1)
+                        sf_range[1] = sf_range[1] + 1;
+                    else if(sf_norm >= 0.1 && sf_norm < 0.2)
+                        sf_range[2] = sf_range[2] + 1;
+                    else if(sf_norm >= 0.2 && sf_norm <0.4)
+                        sf_range[3] = sf_range[3] + 1;
+                    else if(sf_norm >= 0.4 && sf_norm <0.8)
+                        sf_range[4] = sf_range[4] + 1;
+                    else if(sf_norm >= 0.8 && sf_norm <1.6)
+                        sf_range[5] = sf_range[5] + 1;
+                    else if(sf_norm >= 1.6 && sf_norm <3.2)
+                        sf_range[6] = sf_range[6] + 1;
+                    else if(sf_norm >= 3.2 && sf_norm <6.4)
+                        sf_range[7] = sf_range[7] + 1;
+                    else if(sf_norm >= 6.4 && sf_norm <12.8)
+                        sf_range[8] = sf_range[8] + 1;
+                    else if(sf_norm >= 12.8 && sf_norm <25.8)
+                        sf_range[9] = sf_range[9] + 1;
+                }
+            }
+
+            if(sf_count/objId[i].size() > fsFDsThres)
+            {
+                //label this object as static background
+                for(int k=0; k <objId[i].size(); ++k)
+                    currentFrame.objLabel[objId[i][k]] = 0;
+                continue;
+            }
+            else if(obj_center_depth/objId[i].size()>mThDepthObj || objId[i].size()<150)
+            {
+                obj_dis_tres[i] = -1;
+                //label this object as far away object
+                for(int k = 0; k < objId[i].size(); ++k)
+                    currentFrame.objLabel[objId[i][k]] = -1;
+                continue;
+            }
+            else
+            {
+                ObjIdNew.push_back(objId[i]);
+                SemPosNew.push_back(sem_posi[i]);
+            }
+        }
+
+        //add ground truth tracks
+
+        vector<int> nSemPosi_gt_tmp = currentFrame.nSemPosi_gt;
+        for(int i=0; i<sem_posi.size(); ++i)
+        {
+            for(int j=0; j<nSemPosi_gt_tmp.size(); ++j)
+            {
+                if(sem_posi[i] == nSemPosi_gt_tmp[j] && obj_dis_tres[i]==-1)
+                {
+                    nSemPosi_gt_tmp[j] = -1;
+                }
+            }
+        }
+
+        mpMap->vnSMLabelGT.push_back(nSemPosi_gt_tmp);
+
+
+        //initialize global object id
+        vector<int> LabId(ObjIdNew.size());
+        for(int i=0; i<ObjIdNew.size(); ++i)
+        {
+            //save semantic labels in last frame
+            vector<int>lb_last;
+            for(int k=0; k < ObjIdNew[i].size(); ++i)
+                lb_last.push_back(mLastFrame.semObjLabel[ObjIdNew[i][k]]);
+            
+            //find label that appears most in Lb_last
+            //count duplcates
+            map<int, int> dups;
+            for(int k:lb_last)
+                ++dups[k];
+            
+            // sort them by descending order
+            vector<pair<int, int>> sorted;
+            for(auto k : dups)
+                sorted.push_back(make_pair(k.first, k.second));
+            sort(sorted.begin(), sorted.end(), SortPairInt);
+
+            //label the object in current frame
+            int New_lab = sorted[0].first;
+
+            if(max_id == 1)
+            {
+                LabId[i] = max_id;
+                for(int k=0; k<ObjIdNew[i].size(); ++ k)
+                    currentFrame.objLabel[ObjIdNew[i][k]] = max_id;
+                max_id = max_id + 1;
+            }
+            else{
+                bool exist = false;
+                for(int k=0; k<mLastFrame.nSemPosition.size(); ++k)
+                {
+                    if(mLastFrame.nSemPosition[k]==New_lab && mLastFrame.bObjStat[k])
+                    {
+                        LabId[i] = mLastFrame.nModLabel[k];
+                        for(int k=0; k<ObjIdNew[i].size(); ++k)
+                            currentFrame.objLabel[ObjIdNew[i][k]] = LabId[i];
+                        exist = true;
+                        break;
+                    }
+                }
+                if(exist == false)
+                {
+                    LabId[i] = max_id;
+                    for(int k=0; k<ObjIdNew[i].size(); ++k)
+                        currentFrame.objLabel[ObjIdNew[i][k]] = max_id;
+                    max_id = max_id + 1;
+                }
+            }
+        }
+
+        //assign the model label in current frame
+        currentFrame.nModLabel = LabId;
+        currentFrame.nSemPosition = SemPosNew;
+
+        e_2 = clock();
+        obj_tra_time = (double)(e_2 - s_2)/CLOCKS_PER_SEC*1000;
+        all_timing[2] = obj_tra_time;
+
+        return ObjIdNew;
     }
+
+    cv::Mat Tracking::GetInitModelCam(const vector<int> &MatchId, vector<int> &MatchId_sub)
+    {
+        cv::Mat Mod = cv::Mat::eye(4, 4, CV_32F);
+        int N = MatchId.size();
+
+        //construct input
+        vector<cv::Point2f> cur_2d(N);
+        vector<cv::Point3f> pre_3d(N);
+
+        for(int i=0; i<N; ++i)
+        {
+            cv::Point2f tmp_2d;
+            tmp_2d.x = currentFrame.mvStatKeys[MatchId[i]].pt.x;
+            tmp_2d.y = currentFrame.mvStatKeys[MatchId[i]].pt.y;
+            cur_2d[i] = tmp_2d;
+            cv::Point3f tmp_3d;
+            cv::Mat x3D_p = mLastFrame.UnprojectStereoStat(MatchId[i], 0);
+            tmp_3d.x = x3D_p.at<float>(0);
+            tmp_3d.y = x3D_p.at<float>(1);
+            tmp_3d.z = x3D_p.at<float>(2);
+            pre_3d[i] = tmp_3d;
+        }
+
+        //camera matrix & distortion coefficients
+        cv::Mat camera_mat(3, 3, CV_64FC1);
+        cv::Mat disCoeffs = cv::Mat::zeros(1, 4, CV_64FC1);
+        camera_mat.at<double>(0,0) = mK.at<float>(0,0);
+        camera_mat.at<double>(1, 1) = mK.at<float>(1,1);
+        camera_mat.at<double>(0, 2) = mK.at<float>(0, 2);
+        camera_mat.at<double>(1, 2) = mK.at<float>(1, 2);
+        camera_mat.at<double>(2, 2) = 1.0;
+
+        //output
+        cv::Mat Rvec(3, 1, CV_64FC1);
+        cv::Mat Tvec(3, 1, CV_64FC1);
+        cv::Mat d(3, 3, CV_64FC1);
+        cv::Mat inliers;
+
+        //solve
+        int iter_num = 500;
+        double reprojectionError = 0.4, confidence = 0.98;
+        cv::solvePnPRansac(pre_3d, cur_2d, camera_mat, disCoeffs, Rvec, Tvec, false,
+                    iter_num, reprojectionError, confidence, inliers, cv::SOLVEPNP_AP3P);
+        cv::Rodrigues(Rvec, d);
+
+        //assign the result to current pose
+        Mod.at<float>(0, 0) = d.at<double>(0, 0); Mod.at<float>(0,1) = d.at<double>(0,1); Mod.at<float>(0, 2) = d.at<double>(0, 2); Mod.at<float>(0, 3) = Tvec.at<double>(0, 0);
+        Mod.at<float>(1, 0) = d.at<double>(1, 0); Mod.at<float>(1,1) = d.at<double>(1,1); Mod.at<float>(1, 2) = d.at<double>(1, 2); Mod.at<float>(1, 3) = Tvec.at<double>(1, 0);
+        Mod.at<float>(2, 0) = d.at<double>(2, 0); Mod.at<float>(2,1) = d.at<double>(2,1); Mod.at<float>(2, 2) = d.at<double>(2, 2); Mod.at<float>(2, 3) = Tvec.at<double>(2, 0);
+
+        //calculate the re-projection error
+        vector<int> MM_inlier;
+        cv::Mat MotionModel;
+
+        if(mVelocity.empty())
+            MotionModel = cv::Mat::eye(4, 4, CV_32F)*mLastFrame.camPose;
+        else
+            MotionModel = mVelocity*mLastFrame.camPose;
+        for(int i=0; i<N; ++i)
+        {
+            const cv::Mat x3D = (cv::Mat_<float>(3, 1) << pre_3d[i].x, pre_3d[i].y, pre_3d[i].z);
+            const cv::Mat x3D_c = MotionModel.rowRange(0, 3).colRange(0, 3)*x3D + MotionModel.rowRange(0, 3).col(3);
+        
+            const float xc = x3D_c.at<float>(0);
+            const float yc = x3D_c.at<float>(1);
+            const float invzc = 1.0/x3D_c.at<float>(2);
+            const float u = currentFrame.fx*xc*invzc+currentFrame.cx;
+            const float v = currentFrame.fy*yc*invzc+currentFrame.cy;
+            const float u_ = cur_2d[i].x - u;
+            const float v_ = cur_2d[i].y - v;
+            const float Rpe = sqrt(u_*u_ + v_ * v_);
+            if(Rpe<reprojectionError){
+                MM_inlier.push_back(i);
+            }
+        }
+
+        cv::Mat output;
+
+        if(inliers.rows>MM_inlier.size())
+        {   
+            //save the inliers IDs
+            output = Mod;
+            MatchId_sub.resize(inliers.rows);
+            for(int i=0; i<MatchId_sub.size(); ++i){
+                MatchId_sub[i] = MatchId[inliers.at<int>(i)];
+            }
+        }
+        else{
+            output = MotionModel;
+            MatchId_sub.resize(MM_inlier.size());
+            for(int i=0; i<MatchId_sub.size(); ++i){
+                MatchId_sub[i] = MatchId[MM_inlier[i]];
+            }
+        }
+        
+        return output;
+    }
+
+    cv::Mat Tracking::GetInitModelObj(const vector<int> &ObjId, vector<int> &ObjId_sub, const int objid)
+    {
+        cv::Mat Mod = cv::Mat::eye(4, 4, CV_32F);
+        int N = ObjId.size();
+
+        //construct input
+        vector<cv::Point2f> cur_2d(N);
+        vector<cv::Point3f> pre_3d(N);
+        for(int i=0; i<N; ++i)
+        {
+            cv::Point2f tmp_2d;
+            tmp_2d.x = currentFrame.mvObjKeys[ObjId[i]].pt.x;
+            tmp_2d.y = currentFrame.mvObjKeys[ObjId[i]].pt.y;
+            cur_2d[i] = tmp_2d;
+            cv::Point3f tmp_3d;
+            cv::Mat x3D_p = mLastFrame.UnprojectStereoObject(ObjId[i], 0);
+            tmp_3d.x = x3D_p.at<float>(0);
+            tmp_3d.y = x3D_p.at<float>(1);
+            tmp_3d.z = x3D_p.at<float>(2);
+            pre_3d[i] = tmp_3d;
+        }
+
+        //camera matrix & distortion coefficients
+        cv::Mat camera_mat(3, 3, CV_64FC1);
+        cv::Mat distCoeffs = cv::Mat::zeros(1, 4, CV_64FC1);
+        camera_mat.at<double>(0, 0) = mK.at<float>(0, 0);
+        camera_mat.at<double>(1, 1) = mK.at<float>(1, 1);
+        camera_mat.at<double>(1, 2) = mK.at<float>(1, 2);
+        camera_mat.at<double>(0, 2) = mK.at<float>(0, 2);
+        camera_mat.at<double>(2, 2) = 1.0;
+
+        //output
+        cv::Mat Rvec(3, 1, CV_64FC1);
+        cv::Mat Tvec(3, 1, CV_64FC1);
+        cv::Mat d(3, 3, CV_64FC1);
+        cv::Mat inliers;
+
+        //solve
+        int iter_num = 500;
+        double reprojectionError = 0.4, confidence = 0.98;
+        cv::solvePnPRansac(pre_3d, cur_2d, camera_mat, distCoeffs, Rvec, Tvec, false,
+                    iter_num, reprojectionError, confidence, inliers, cv::SOLVEPNP_AP3P);
+        cv::Rodrigues(Rvec, d);
+
+        Mod.at<float>(0, 0) = d.at<double>(0, 0); Mod.at<float>(0,1) = d.at<double>(0,1); Mod.at<float>(0, 2) = d.at<double>(0, 2); Mod.at<float>(0, 3) = Tvec.at<double>(0, 0);
+        Mod.at<float>(1, 0) = d.at<double>(1, 0); Mod.at<float>(1,1) = d.at<double>(1,1); Mod.at<float>(1, 2) = d.at<double>(1, 2); Mod.at<float>(1, 3) = Tvec.at<double>(1, 0);
+        Mod.at<float>(2, 0) = d.at<double>(2, 0); Mod.at<float>(2,1) = d.at<double>(2,1); Mod.at<float>(2, 2) = d.at<double>(2, 2); Mod.at<float>(2, 3) = Tvec.at<double>(2, 0);
+
+        //generate motion model if it does exist from previous frame
+        int CurObjLab = currentFrame.nModLabel[objid];
+        int PreObjID = -1;
+
+        for(int i=0; i<mLastFrame.nModLabel.size(); ++i)
+        {
+            if(mLastFrame.nModLabel[i]==CurObjLab)
+            {
+                PreObjID = i;
+                break;
+            }
+        }
+
+        cv::Mat MotionModel, output;
+        vector<int> ObjId_tmp(N, -1);
+        if(PreObjID != -1)
+        {
+            vector<int> MM_inlier;
+            MotionModel = currentFrame.camPose*mLastFrame.objMod[PreObjID];
+            for(int i=0; i<N; ++i)
+            {
+                const cv::Mat x3D = (cv::Mat_<float>(3, 1) << pre_3d[i].x, pre_3d[i].y, pre_3d[i].z);
+                const cv::Mat x3D_c = MotionModel.rowRange(0, 3).colRange(0, 3)*x3D + MotionModel.rowRange(0, 3).col(3);
+        
+                const float xc = x3D_c.at<float>(0);
+                const float yc = x3D_c.at<float>(1);
+                const float invzc = 1.0/x3D_c.at<float>(2);
+                const float u = currentFrame.fx*xc*invzc+currentFrame.cx;
+                const float v = currentFrame.fy*yc*invzc+currentFrame.cy;
+                const float u_ = cur_2d[i].x - u;
+                const float v_ = cur_2d[i].y - v;
+                const float Rpe = sqrt(u_*u_ + v_ * v_);
+                if(Rpe<reprojectionError){
+                    MM_inlier.push_back(i);
+                }
+            }
+
+            if(inliers.rows>MM_inlier.size())
+            {
+                output = Mod;
+                ObjId_sub.resize(inliers.rows);
+                for(int i=0; i<ObjId_sub.size(); ++i)
+                {
+                    ObjId_sub[i] = ObjId[inliers.at<int>(i)];
+                    ObjId_tmp[inliers.at<int>(i)] = ObjId[inliers.at<int>(i)];
+                }
+            }
+            else{
+                output = MotionModel;
+                ObjId_sub.resize(MM_inlier.size());
+                for(int i=0; i<ObjId_sub.size(); ++i){
+                    ObjId_sub[i] = ObjId[MM_inlier[i]];
+                    ObjId_tmp[MM_inlier[i]] = ObjId[MM_inlier[i]];
+                }
+            }
+        }
+        else{
+            output = Mod;
+            ObjId_sub.resize(inliers.rows);
+            for(int i=0; i<ObjId_sub.size(); ++i){
+                ObjId_sub[i] = ObjId[inliers.at<int>(i)];
+                ObjId_tmp[inliers.at<int>(i)] = ObjId[inliers.at<int>(i)];
+            }
+        }
+
+        for(int i=0; i<ObjId_tmp.size(); ++i){
+            if(ObjId_tmp[i] == -1)
+                currentFrame.objLabel[ObjId[i]] = -1;
+        }
+
+        return output;
+    }
+
+    void Tracking::DrawLine(cv::KeyPoint &keys, cv::Point2f &flow, cv::Mat &ref_image, const cv::Scalar &color, int thickness, int line_type, const cv::Point2i &offset)
+    {
+        auto cv_p1 = cv::Point2i(keys.pt.x, keys.pt.y);
+        auto cv_p2 = cv::Point2i(keys.pt.x + flow.x, keys.pt.y + flow.y);
+
+        bool p1_in_bounds = true;
+        bool p2_in_bounds = true;
+        if((cv_p1.x < 0) && cv_p1.y < 0 && cv_p1.x > ref_image.cols && cv_p1.y > ref_image.rows)
+        {
+            p1_in_bounds = false;
+        }
+        if(cv_p1.x<0 && cv_p2.y<0 &&cv_p2.x >ref_image.cols && cv_p2.y > ref_image.rows)
+        {
+            p2_in_bounds = false;
+        }
+
+        if(p1_in_bounds || p2_in_bounds){
+            auto p1_offs = offset + cv_p1;
+            auto p2_offs = offset + cv_p2;
+            if(cv::clipLine(cv::Size(ref_image.cols, ref_image.rows), p1_offs, p2_offs)){
+                cv::arrowedLine(ref_image, p1_offs, p2_offs, color, thickness, line_type);
+            }
+        }
+    }
+
+    void Tracking::DrawTransparentSquare(cv::Point center, cv::Vec3b color, int radius, double alpha, cv::Mat &ref_image)
+    {
+        for(int i=-radius; i<radius; i++){
+            for(int j = -radius; j<radius; j++){
+                int coord_y = center.y + i;
+                int coord_x = center.x + j;
+
+                if(coord_x > 0 && coord_x <ref_image.cols && coord_y <ref_image.rows){
+                    ref_image.at<cv::Vec3b>(cv::Point(coord_x, coord_y)) = (1.0-alpha)*ref_image.at<cv::Vec3b>(cv::Point(coord_x, coord_y)) + alpha*color;
+                }
+            }
+        }
+    }
+
+    
 }
