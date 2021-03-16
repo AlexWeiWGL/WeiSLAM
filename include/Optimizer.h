@@ -12,7 +12,7 @@ namespace WeiSLAM{
         public:
             int static PoseOptimizationNew(Frame *pCurFrame, Frame *pLastFrame, vector<int> &TemperalMatch);
             int static PoseOptimizationFlow2Cam(Frame *pCurFrame, Frame *pLastFrame, vector<int> &TemperalMatch);
-            cv::Mat static PoseOptimizationObjMot(Frame *pCurFrame, Frame *pLastFrame, const vector<int> *OnjId, vector<int> &InlierID);
+            cv::Mat static PoseOptimizationObjMot(Frame *pCurFrame, Frame *pLastFrame, const vector<int> &OnjId, vector<int> &InlierID);
             cv::Mat static PoseOptimizationFlow2(Frame *pCurFrame, Frame *pLastFrame, const vector<int> &ObjId, vector<int> &InlierID);
             void static FullBatchOptimization(Map* pMap, const cv::Mat Calib_K);
             void static PartialBatchOptimization(Map* pMap, const cv::Mat Calib_k, const int WINDOW_SIZE);

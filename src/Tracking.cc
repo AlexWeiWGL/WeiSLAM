@@ -613,11 +613,480 @@ namespace WeiSLAM{
             cout << "..............Dealing with Objects Now.................." << endl;
             cout << "--------------------------------------------------------" << endl;
 
+
+            //compute sparse scene flow to the found matches
             GetSceneFlowObj();
 
+            //dynamic object tracking
             cout << "Object Tracking ...... " << endl;
             vector<vector<int>> objIdNew = DynObjTracking();
             cout << "Object Tracking, Done !" << endl;
+        
+            //Object motion estimation
+
+            clock_t s_3_1, s_3_2, e_3_1, e_3_2;
+            double obj_mot_time = 0, t_con = 0;
+
+            currentFrame.bObjStat.resize(objIdNew.size(), true);
+            currentFrame.objMod.resize(objIdNew.size());
+            currentFrame.objPosePre.resize(objIdNew.size());
+            currentFrame.vObjMod_gt.resize(objIdNew.size());
+            currentFrame.vObjSpeed_gt.resize(objIdNew.size());
+            currentFrame.speed.resize(objIdNew.size());
+            currentFrame.vObjBoxID.resize(objIdNew.size());
+            currentFrame.vObjCentre3D.resize(objIdNew.size());
+            currentFrame.vnObjID.resize(objIdNew.size());
+            currentFrame.vnObjInlierID.resize(objIdNew.size());
+            repro_e.resize(objIdNew.size(), 0.0);
+            cv::Mat Last_Twc_gt = Converter::toInvMatrix(mLastFrame.mTcw_gt);
+            cv::Mat Curr_Twc_gt = Converter::toInvMatrix(currentFrame.mTcw_gt);
+
+            //main loop
+            for(int i=0; i<objIdNew.size(); ++i){
+                cout << endl << "Processing Object No.[" << currentFrame.nModLabel[i] << "]:" << endl;
+                
+                //get the ground truth object motion
+                cv::Mat L_p, L_c, L_w_p, L_w_c, H_p_c, H_p_c_body;
+                bool bCheckGT1 = false, bCheckGT2 = false;
+                for(int k=0; k<mLastFrame.nSemPosi_gt.size(); ++k)
+                {
+                    if(mLastFrame.nSemPosi_gt[k] == currentFrame.nSemPosition[i]){
+                        if(mTestData==OMD)
+                        {
+                            L_w_p = mLastFrame.vObjPose_gt[k];
+                        }
+                        else if(mTestData==KITTI)
+                        {
+                            L_p = mLastFrame.vObjPose_gt[k];
+                            L_w_p = Last_Twc_gt * L_p;
+                        }
+                        bCheckGT1 = true;
+                        break;
+                    }
+                }
+
+                for(int k=0; k<currentFrame.nSemPosi_gt.size(); ++k)
+                {
+                    if(currentFrame.nSemPosi_gt[k]==currentFrame.nSemPosition[i]){
+                        if(mTestData==OMD)
+                        {
+                            L_w_c = currentFrame.vObjPose_gt[k];
+                        }
+                        else if(mTestData  == KITTI)
+                        {
+                            L_c = currentFrame.vObjPose_gt[k];
+                            L_w_c = Curr_Twc_gt * L_c;
+                        }
+                        currentFrame.vObjBoxID[i] = k;
+                        bCheckGT2 = true;
+                        break;
+                    }
+                }
+
+                if(!bCheckGT1 || !bCheckGT2)
+                {
+                    cout << "Found a detected object woth no ground truth motion !!!" << endl;
+                    currentFrame.bObjStat[i] = false;
+                    currentFrame.vObjMod_gt[i] = cv::Mat::eye(4, 4, CV_32F);
+                    currentFrame.objMod[i] = cv::Mat::eye(4, 4, CV_32F);
+                    currentFrame.vObjCentre3D[i] = (cv::Mat_<float>(3, 1) << 0.f, 0.f, 0.f);
+                    currentFrame.vObjSpeed_gt[i] = 0.0;
+                    currentFrame.vnObjInlierID[i] = objIdNew[i];
+                    continue;
+                }
+
+                cv::Mat L_w_p_inv = Converter::toInvMatrix(L_w_p);
+                H_p_c = L_w_c * L_w_p_inv;
+                currentFrame.vObjMod_gt[i] = H_p_c_body;
+                currentFrame.objPosePre[i] = L_w_p;
+                
+                cv::Mat objCentre3D_pre = (cv::Mat_<float>(3, 1) << 0.f, 0.f, 0.f);
+                for(int j=0; j<objIdNew[i].size(); ++j)
+                {
+                    cv::Mat x3D_p = mLastFrame.UnprojectStereoObject(objIdNew[i][j], 0);
+                    objCentre3D_pre = objCentre3D_pre + x3D_p;
+                }
+                objCentre3D_pre = objCentre3D_pre / objIdNew[i].size();
+                currentFrame.vObjCentre3D[i] = objCentre3D_pre;
+
+                s_3_1 = clock();
+
+                //get initial model and inlier set using p3p RanSac
+                vector<int> objIdTest = objIdNew[i];
+                currentFrame.vnObjID[i] = objIdTest;
+                vector<int> objIdTest_in;
+                currentFrame.mInitModel = GetInitModelObj(objIdTest, objIdTest_in, i);
+
+                e_3_1 = clock();
+
+                if(objIdTest_in.size()<50)
+                {
+                    cout << "Object Initialization Fail !!!" << endl;
+                    currentFrame.bObjStat[i] = false;
+                    currentFrame.vObjMod_gt[i] = cv::Mat::eye(4, 4, CV_32F);
+                    currentFrame.objMod[i] = cv::Mat::eye(4, 4, CV_32F);
+                    currentFrame.vObjCentre3D[i] = (cv::Mat_<float>(3, 1) << 0.f, 0.f, 0.f);
+                    currentFrame.vObjSpeed_gt[i] = 0.0;
+                    currentFrame.speed[i] = cv::Point2f(0.f, 0.f);
+                    currentFrame.vnObjInlierID[i] = objIdTest_in;
+                    continue;
+                }
+
+                s_3_2 = clock();
+                //save object motion and label
+                vector<int> inlierID;
+                if(bJoint)
+                {
+                    cv::Mat obj_X_tmp = Optimizer::PoseOptimizationFlow2(&currentFrame, &mLastFrame, objIdTest_in, inlierID);
+                    currentFrame.objMod[i] = Converter::toInvMatrix(currentFrame.camPose)*obj_X_tmp;
+                }
+                else
+                    currentFrame.objMod[i] = Optimizer::PoseOptimizationObjMot(&currentFrame, &mLastFrame, objIdTest_in, inlierID);
+                e_3_2 = clock();
+                t_con = t_con + 1;
+                obj_mot_time = obj_mot_time + (double)(e_3_1-s_3_1)/CLOCKS_PER_SEC*1000 + (double)(e_3_2-s_3_2)/CLOCKS_PER_SEC*1000;
+                
+                currentFrame.vnObjInlierID[i] = inlierID;
+
+
+
+                //get the ground truth object speed here
+                cv::Mat sp_gt_v, sp_gt_v2;
+                sp_gt_v = H_p_c.rowRange(0,3).col(3) - (cv::Mat::eye(3, 3, CV_32F)- H_p_c.rowRange(0, 3).colRange(0,3))*objCentre3D_pre;
+                sp_gt_v2 = L_w_p.rowRange(0,3).col(3) - L_w_c.rowRange(0,3).col(3);
+                float sp_gt_norm = sqrt(sp_gt_v.at<float>(0)*sp_gt_v.at<float>(0)+sp_gt_v.at<float>(1) + sp_gt_v.at<float>(2)*sp_gt_v.at<float>(2)) * 36;
+
+                currentFrame.vObjSpeed_gt[i] = sp_gt_norm;
+
+                //Calculate the estimated object speed
+                cv::Mat sp_est_v;
+                sp_est_v = currentFrame.objMod[i].rowRange(0, 3).col(3) - (cv::Mat::eye(3, 3, CV_32F)-currentFrame.objMod[i].rowRange(0, 3))*objCentre3D_pre;
+                float sp_est_norm = sqrt(sp_est_v.at<float>(0)*sp_est_v.at<float>(0) + sp_est_v.at<float>(1)*sp_est_v.at<float>(1) + sp_est_v.at<float>(2)*sp_est_v.at<float>(2)) *36;
+
+                cout << "estimated and gound truth object speed: " << sp_est_norm << "km/h " << sp_gt_norm << "km/h" << endl;
+
+                currentFrame.speed[i].x = sp_est_norm * 36;
+                currentFrame.speed[i].y = sp_gt_norm * 36;
+
+                //calculate the relative pose error
+
+                cv::Mat H_p_c_body_est = L_w_p_inv * currentFrame.objMod[i] * L_w_p;
+                cv::Mat RePoEr = Converter::toInvMatrix(H_p_c_body_est)*H_p_c_body;
+
+                float t_rpe = sqrt(pow(RePoEr.at<float>(0,3), 2) + pow(RePoEr.at<float>(1,3), 2) + pow(RePoEr.at<float>(2, 3), 2));
+                float trace_rpe = 0;
+                for(int i=0; i<3; ++i)
+                {
+                    if(RePoEr.at<float>(i, i)>1.0)
+                        trace_rpe = trace_rpe + 1.0 - (RePoEr.at<float>(i, i)- 1.0);
+                    else    
+                        trace_rpe = trace_rpe + RePoEr.at<float>(i, i);
+                }
+                float r_rpe = acos((trace_rpe - 1.0)/2.0)*180.0/CV_PI;
+                cout << "the relative pose error of the object, " << "t: " << t_rpe << "R: " << r_rpe << endl;
+
+            }
+
+            if(t_con!=0)
+            {
+                obj_mot_time = obj_mot_time/t_con;
+                all_timing[3] = obj_mot_time;
+            }
+            else
+                all_timing[3] = 0;
+
+            clock_t s_4, e_4;
+            double map_upd_time;
+            s_4 = clock();
+            RenewFrameInfo(TemperalMatch_subset);
+            e_4 = clock();
+            map_upd_time = (double) (e_4-s_4)/CLOCKS_PER_SEC*1000;
+
+            //save timing analysis to the map
+            mpMap->vfAll_time.push_back(all_timing);
+
+            cout << "Assign tp LastFrame ......" << endl;
+
+            mvKeysLastFrame = mLastFrame.mvStatKeys;
+            mvKeysCurrentFrame = currentFrame.mvStatKeys;
+
+            mLastFrame = Frame(currentFrame);
+            mLastFrame.mvObjKeys = currentFrame.mvObjKeys;
+            mLastFrame.mvObjDepth = currentFrame.mvObjDepth;
+            mLastFrame.semObjLabel = currentFrame.semObjLabel;
+
+            mLastFrame.mvStatKeys = currentFrame.mvStatKeysTmp;
+            mLastFrame.mvStatDepth = currentFrame.mvStatDepthTmp;
+
+
+            cout << "Assign to lastframe, Done !" << endl;
+
+            //save some stuffs for graph structure
+
+            cout << "Save Graph Structure ......" << endl;
+
+            //detected static features, corresponding depth and associations
+            mpMap->vpFeatSta.push_back(currentFrame.mvStatKeysTmp);
+            mpMap->vfDepSta.push_back(currentFrame.mvStatDepthTmp);
+            mpMap->vp3DPointSta.push_back(currentFrame.mvStat3DPointTmp);
+            mpMap->vnAssoSta.push_back(currentFrame.nStatInlierID);
+
+            //detected dynamic object features, corresponding depth and associations
+            mpMap->vpFeatDyn.push_back(currentFrame.mvObjKeys);
+            mpMap->vfDepDyn.push_back(currentFrame.mvObjDepth);
+            mpMap->vp3DPointDyn.push_back(currentFrame.mvObj3DPoint);
+            mpMap->vnAssoDyn.push_back(currentFrame.nDynInlierID);
+            mpMap->vnFeatLabel.push_back(currentFrame.objLabel);
+
+            if(f_id == stopFrame || bLocalBatch)
+            {
+                //save static feature tracklets
+                mpMap->TrackletSta = GetStaticTrack();
+                //save dynamic feature tracklets
+                mpMap->TrackletDyn = GetDynamicTrackNew();
+            }
+
+            cv::Mat CameraPoseTmp = Converter::toInvMatrix(currentFrame.camPose);
+            mpMap->vmCameraPose.push_back(CameraPoseTmp);
+            mpMap->vmCameraPose_RF.push_back(CameraPoseTmp);
+            //rigid motions and labels including camera(lable=0) and objects(lable>0)
+            vector<cv::Mat> Mot_Tmp, ObjPose_Tmp;
+            vector<int> Mot_Lab_Tmp, Sem_Lab_Tmp;
+            vector<bool> Obj_Stat_Tmp;
+
+            cv::Mat CameraMotionTmp = Converter::toInvMatrix(mVelocity);
+            Mot_Tmp.push_back(CameraMotionTmp);
+            ObjPose_Tmp.push_back(CameraMotionTmp);
+            Mot_Lab_Tmp.push_back(0);
+            Sem_Lab_Tmp.push_back(0);
+            Obj_Stat_Tmp.push_back(true);
+
+            //save object motions and label
+            for(int i=0; i<currentFrame.objMod.size(); ++i)
+            {
+                if(!currentFrame.bObjStat[i])
+                    continue;
+                Obj_Stat_Tmp.push_back(currentFrame.bObjStat[i]);
+                Mot_Tmp.push_back(currentFrame.objMod[i]);
+                ObjPose_Tmp.push_back(currentFrame.objPosePre[i]);
+                Mot_Lab_Tmp.push_back(currentFrame.nModLabel[i]);
+                Sem_Lab_Tmp.push_back(currentFrame.nSemPosition[i]);
+            }
+
+            //save to the map
+            mpMap->vmRigidMotion.push_back(Mot_Tmp);
+            mpMap->vmObjPosePre.push_back(ObjPose_Tmp);
+            mpMap->vmRigidMotion_RF.push_back(Mot_Tmp);
+            mpMap->vnRMLabel.push_back(Mot_Lab_Tmp);
+            mpMap->vnSMLabel.push_back(Sem_Lab_Tmp);
+            mpMap->vbObjStat.push_back(Obj_Stat_Tmp);
+
+            //count the tracking times fo each unique object
+            if(max_id > 1)
+                mpMap->vnObjTraTime = GetObjTrackTime(mpMap->vnRMLabel, mpMap->vnSMLabel, mpMap->vnSMLabelGT);
+            
+            //------------------------Ground Truth-----------------------------
+
+            //ground truth camera pose
+            cv::Mat CameraPoseTmpGT = Converter::toInvMatrix(currentFrame.mTcw_gt);
+            mpMap->vmCameraPose_GT.push_back(CameraPoseTmpGT);
+
+            //ground truth rigid Motions
+            vector<cv::Mat> Mot_Tmp_gt;
+            //Save Camera Motion
+            cv::Mat CameraMotionTmp_gt = mLastFrame.mTcw_gt*Converter::toInvMatrix(currentFrame.mTcw_gt);
+            Mot_Tmp_gt.push_back(CameraMotionTmp_gt);
+            //save object motions
+            for(int i=0; i<currentFrame.vObjMod_gt.size(); ++i)
+            {
+                if(!currentFrame.bObjStat[i])
+                    continue;
+                Mot_Tmp_gt.push_back(currentFrame.vObjMod_gt[i]);
+            }
+            //save to the map    
+            mpMap->vmRigidMotion_GT.push_back(Mot_Tmp_gt);
+
+            //ground truth camera and object speeds
+            vector<float> Speed_Tmp_gt;
+            //Save camera speed
+            Speed_Tmp_gt.push_back(1.0);
+            //save object motions
+            for(int i=0; i<currentFrame.vObjSpeed_gt.size(); ++i)
+            {
+                if(!currentFrame.bObjStat[i])
+                    continue;
+                Speed_Tmp_gt.push_back(currentFrame.vObjSpeed_gt[i]);
+            }
+            //save to the map
+            mpMap->vfAllSpeed_GT.push_back(Speed_Tmp_gt);
+
+            cout << "Save graph structure, Done !" << endl;
         }
+
+        // partial batch optimize on all the measurements(Local optimization)
+        bLocalBatch = false;
+        if((f_id-nOVERLAP_SIZE + 1) % (nWINDOW_SIZE-nOVERLAP_SIZE)==0 && f_id>=nWINDOW_SIZE-1 && bLocalBatch)
+        {
+            cout << "--------------------------------------------" <<  endl;
+            cout << "! ! ! ! Partial Batch Optimization ! ! ! ! " << endl;
+            cout << "--------------------------------------------" << endl;
+            clock_t s_5, e_5;
+            double loc_ba_time;
+            s_5 = clock();
+            //get partial batch optimization
+            Optimizer::PartialBatchOptimization(mpMap, mK, nWINDOW_SIZE);
+            e_5 = clock();
+            loc_ba_time = (double)(e_5 - s_5)/CLOCKS_PER_SEC*1000;
+            mpMap->fLBA_time.push_back(loc_ba_time);
+        }
+
+        //Full batch optimize on all the measurements(global optimization)
+
+        bGlobalBatch = true;
+        if(f_id == stopFrame)
+        {
+            //metric error before optimization
+            GetMetricError(mpMap->vmCameraPose, mpMap->vmRigidMotion, mpMap->vmObjPosePre,
+                           mpMap->vmCameraPose_GT, mpMap->vmRigidMotion_GT, mpMap->vbObjStat);
+            
+            if(bGlobalBatch && mTestData==KITTI)
+            {
+                //get full batch optimization
+                Optimizer::FullBatchOptimization(mpMap, mK);
+
+                //Metric error after optimization
+                GetMetricError(mpMap->vmCameraPose_RF, mpMap->vmRigidMotion_RF, mpMap->vmObjPosePre,
+                               mpMap->vmCameraPose_GT, mpMap->vmRigidMotion_GT, mpMap->vbObjStat);
+                
+            }
+        }
+
+        mState = OK;
+    }
+
+    void Tracking::Initialization()
+    {
+        cout << "Initialization ......." << endl;
+
+        //initialize the 3d points
+        {
+            //static
+            vector<cv::Mat> mv3DPointTmp;
+            for(int i=0; i<currentFrame.mvStatKeysTmp.size(); ++i)
+            {
+                mv3DPointTmp.push_back(Optimizer::Get3DinCamera(currentFrame.mvStatKeysTmp[i], currentFrame.mvStatDepthTmp[i], mK));
+            }
+            currentFrame.mvStat3DPointTmp = mv3DPointTmp;
+
+            vector<cv::Mat> mvObj3DPointTmp;
+            for(int i=0; i<currentFrame.mvObjKeys.size(); ++i)
+            {
+                mvObj3DPointTmp.push_back(Optimizer::Get3DinCamera(currentFrame.mvObjKeys[i], currentFrame.mvObjDepth[i], mK));
+            }
+            currentFrame.mvObj3DPoint = mv3DPointTmp;
+
+        }
+
+        //save detected static features and corresponding depth
+        mpMap->vpFeatSta.push_back(currentFrame.mvStatKeysTmp);
+        mpMap->vfDepSta.push_back(currentFrame.mvStatDepthTmp);
+        mpMap->vp3DPointSta.push_back(currentFrame.mvStat3DPointTmp);
+
+        //save detected dynamic object features and corresponding depth
+        mpMap->vpFeatDyn.push_back(currentFrame.mvObjKeys);
+        mpMap->vfDepDyn.push_back(currentFrame.mvObjDepth);
+        mpMap->vp3DPointDyn.push_back(currentFrame.mvObj3DPoint);
+
+        //save camera pose
+        mpMap->vmCameraPose.push_back(cv::Mat::eye(4, 4, CV_32F));
+        mpMap->vmCameraPose_RF.push_back(cv::Mat::eye(4, 4, CV_32F));
+        mpMap->vmCameraPose_GT.push_back(cv::Mat::eye(4, 4, CV_32F));
+
+        //set frame pose to the origin
+        currentFrame.SetPose(cv::Mat::eye(4, 4, CV_32F));
+        currentFrame.mTcw_gt = cv::Mat::eye(4, 4, CV_32F);
+
+        mLastFrame = Frame(currentFrame);
+        mLastFrame.mvObjKeys = currentFrame.mvObjKeys;
+        mLastFrame.mvObjDepth = currentFrame.mvObjDepth;
+        mLastFrame.semObjLabel = currentFrame.semObjLabel;
+
+        mLastFrame.mvStatKeys = currentFrame.mvStatKeysTmp;
+        mLastFrame.mvStatDepth = currentFrame.mvStatDepthTmp;
+        mLastFrame.N_s = currentFrame.N_s_tmp;
+        mvKeysLastFrame = mLastFrame.mvStatKeys;
+
+        mState = OK;
+
+        cout << "Initialization, Done !" << endl;
+    }
+
+    void Tracking::GetSceneFlowObj()
+    {   
+        //initialzation
+        int N = currentFrame.mvObjKeys.size();
+        currentFrame.flow_3d.resize(N);
+
+        vector<Eigen::Vector3d> pts_p3d(N, Eigen::Vector3d(-1, -1, -1)), pts_vel(N, Eigen::Vector3d(-1, -1, -1));
+
+        const cv::Mat Rcw = currentFrame.camPose.rowRange(0,3).colRange(0,3);
+        const cv::Mat tcw = currentFrame.camPose.rowRange(0,3).col(3);
+
+        //Main loop
+        for(int i=0; i<N; ++i)
+        {
+            if(currentFrame.semObjLabel[i]<=0 || mLastFrame.semObjLabel[i]<= 0)
+            {
+                currentFrame.objLabel[i] = -1;
+                continue;
+            }
+
+            //get the 3d flow
+            cv::Mat x3D_p = mLastFrame.UnprojectStereoObject(i, 0);
+            cv::Mat x3D_c = currentFrame.UnprojectStereoObject(i, 0);
+
+            pts_p3d[i] << x3D_p.at<float>(0), x3D_p.at<float>(1), x3D_p.at<float>(2);
+
+            cv::Point3f flow3d;
+            flow3d.x = x3D_c.at<float>(0)- x3D_p.at<float>(0);
+            flow3d.y = x3D_c.at<float>(1) - x3D_p.at<float>(1);
+            flow3d.z = x3D_c.at<float>(2) - x3D_p.at<float>(2);
+
+            pts_vel[i] << flow3d.x, flow3d.y, flow3d.z;
+
+            currentFrame.flow_3d[i] = flow3d;
+        }
+    }
+
+    vector<vector<int>> Tracking::DynObjTracking()
+    {
+        clock_t s_2, e_2;
+        double obj_tra_time;
+        s_2 = clock();
+
+        //find the unique labels in semantic label
+        auto UniLab = currentFrame.semObjLabel;
+        sort(UniLab.begin(), UniLab.end());
+        UniLab.erase(unique(UniLab.begin(), UniLab.end()), UniLab.end());
+
+        //collect the predicted labels and semantic labels in vector
+        vector<vector<int>> Posi(UniLab.size());
+        for(int i=0; i<currentFrame.semObjLabel.size(); ++i)
+        {
+            //skip outliers
+            if(currentFrame.objLabel[i] ==  -1)
+                continue;
+            
+            //save object label
+            for(int j=0; j <UniLab.size(); ++j)
+            {
+                if(currentFrame.semObjLabel[i]==UniLab[j]){
+                    Posi[j].push_back(i);
+                    break;
+                }
+            }
+        }
+
+        
     }
 }

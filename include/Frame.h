@@ -104,6 +104,7 @@ namespace WeiSLAM{
             vector<cv::Point2f> mvFlow, mvFlowNext;    //optical flow
             //temoral saved
             vector<float> mvStatDepthTmp;
+            vector<cv::KeyPoint> mvStatKeysTmp;
             vector<cv::Mat> mvStat3DPointTmp;
             vector<int> vSemLabelTmp;
             vector<int> vObjLabel_gtTmp;
