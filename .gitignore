@@ -36,3 +36,4 @@ build/
 .vscode/
 .history/
 Thirdparty/
+cmake-build-debug/

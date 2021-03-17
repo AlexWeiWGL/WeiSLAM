@@ -1556,7 +1556,7 @@ namespace WeiSLAM{
 
 
     void Tracking::DrawSparseFlowBirdeye(
-            const vector<Eigen::Vector3d> &ots, const vector<Eigen::Vector3d> &vel,
+            const vector<Eigen::Vector3d> &pts, const vector<Eigen::Vector3d> &vel,
             const cv::Mat &camera, const BirdEyeVizProperties &viz_props, cv::Mat &ref_image)
     {
         //for scaling / flipping conv.matrics
@@ -1736,5 +1736,780 @@ namespace WeiSLAM{
         Pose.at<float>(2,0) = R.at<float>(2,0); Pose.at<float>(2,1) = R.at<float>(2,1); Pose.at<float>(2,2) = R.at<float>(2,2); Pose.at<float>(2,3) = t.at<float>(2);
 
         return Converter::toInvMatrix(mOriginInv*Pose);
+    }
+
+    void Tracking::StackObjInfo(vector<cv::KeyPoint> &FeatDynObj, vector<float> &DepDynObj, vector<int> &FeatLabObj)
+    {
+        for(int i=0; i<currentFrame.vnObjID.size(); ++i)
+        {
+            for(int j=0; j<currentFrame.vnObjID[i].size(); ++j)
+            {
+                FeatDynObj.push_back(mLastFrame.mvObjKeys[currentFrame.vnObjID[i][j]]);
+                FeatDynObj.push_back(currentFrame.mvObjKeys[currentFrame.vnObjID[i][j]]);
+                DepDynObj.push_back(mLastFrame.mvObjDepth[currentFrame.vnObjID[i][j]]);
+                DepDynObj.push_back(currentFrame.mvObjDepth[currentFrame.vnObjID[i][j]]);
+                FeatLabObj.push_back(currentFrame.objLabel[currentFrame.vnObjID[i][j]]);
+            }
+        }
+    }
+
+    vector<vector<pair<int, int>>> Tracking::GetStaticTrack()
+    {
+        //Get temporal match from map
+        vector<vector<int>> TemporalMatch = mpMap->vnAssoSta;
+        int N = TemporalMatch.size();
+        //save the track id in tracklets for previous frame and current frame
+        vector<int> TrackCheck_pre;
+        vector<vector<pair<int, int>>> TrackLets;
+
+        int IDsofar = 0;
+        for(int i=0; i<N; ++i) {
+            //initialize trackCheck
+            vector<int> TrackCheck_cur(TemporalMatch[i].size(), -1);
+
+            //check each feature
+            for (int j = 0; j < TemporalMatch[i].size(); ++j) {
+                //first pair of frames
+                if (i == 0) {
+                    //check if there's association
+                    if (TemporalMatch[i][j] != -1) {
+                        //first , save on tracklet consist of two featureID
+                        vector<pair<int, int>> TraLet(2);
+                        TraLet[0] = make_pair(i, TemporalMatch[i][j]);
+                        TraLet[1] = make_pair(i + 1, j);
+                        //then, save to the main tracklets list
+                        TrackLets.push_back(TraLet);
+
+                        //save tracklet id
+                        TrackCheck_cur[j] = IDsofar;
+                        IDsofar = IDsofar + 1;
+                    } else
+                        continue;
+                }
+                    //frame i and i+1
+                else {
+                    //check if there is association
+                    if (TemporalMatch[i][j] != -1)
+                    {
+                        //check the TrackID in previous frame
+                        //if it is associated before, then add to existing tracklets
+                        if (TrackCheck_pre[TemporalMatch[i][j]] != -1) {
+                            TrackLets[TrackCheck_pre[TemporalMatch[i][j]]].push_back(make_pair(i + 1, j));
+                            TrackCheck_cur[j] = TrackCheck_pre[TemporalMatch[i][j]];
+                        }
+                            //if not , insert new tracklets
+                        else {
+                            //first save one tracklet consisting of two featureID
+                            vector<pair<int, int>> TraLet(2);
+                            TraLet[0] = make_pair(i, TemporalMatch[i][j]);
+                            TraLet[1] = make_pair(i + 1, j);
+                            //then save to the main tracklets list
+                            TrackLets.push_back(TraLet);
+
+                            //save tracklet ID
+                            TrackCheck_cur[j] = IDsofar;
+                            IDsofar = IDsofar + 1;
+                        }
+                    }
+                    else
+                        continue;
+                }
+
+            }
+
+            TrackCheck_pre = TrackCheck_cur;
+        }
+
+        //display info
+        cout << endl;
+        cout << "===========================================" << endl;
+        cout << "the number of static feature tracklets: " << TrackLets.size() << endl;
+        cout << "===========================================" << endl;
+        cout << endl;
+
+        vector<int> TrackLength(N, 0);
+        for(int i=0; i<TrackLets.size(); ++i)
+            TrackLength[TrackLets.size()-2]++;
+
+        int LengthOver_5 = 0;
+        ofstream save_track_distri;
+        string save_td = "track_distribution_static.txt";
+        save_track_distri.open(save_td.c_str(), ios::trunc);
+        for(int i=0; i<N; ++i){
+            if(TrackLength[i] != 0)
+                save_track_distri << TrackLength[i] << endl;
+            if(i+2 >= 5)
+                LengthOver_5 = LengthOver_5 + TrackLength[i];
+        }
+        save_track_distri.close();
+
+        return TrackLets;
+    }
+
+    vector<vector<pair<int, int>>> Tracking::GetDynamicTrackNew() {
+        //Get temporal match from map
+        vector<vector<int>> TemporalMatch = mpMap->vnAssoDyn;
+        vector<vector<int>> ObjLab = mpMap->vnFeatLabel;
+        int N = TemporalMatch.size();
+        //save the track id in TrackLets for previous frame and current frame
+        vector<int> TrackCheck_pre;
+        vector<vector<pair<int, int>>> TrackLets;
+        vector<int> ObjectID;
+
+        int IDsofar = 0;
+        for(int i=0; i<N; ++i)
+        {
+            //initialize Trackcheck
+            vector<int> TrackCheck_cur(TemporalMatch[i].size(), -1);
+
+            //check each feature
+            for(int j=0; j<TemporalMatch[i].size(); ++j)
+            {
+                //first pair of frames
+                if(i==0)
+                {
+                    if(TemporalMatch[i][j] != -1)
+                    {
+                        vector<pair<int, int>> TraLet(2);
+                        TraLet[0] = make_pair(i, TemporalMatch[i][j]);
+                        TraLet[1] = make_pair(i+1, j);
+
+                        TrackLets.push_back(TraLet);
+                        ObjectID.push_back(ObjLab[i][j]);
+
+                        TrackCheck_cur[i] = IDsofar;
+                        IDsofar = IDsofar + 1;
+                    }
+                }
+                else
+                {
+                    if(TemporalMatch[i][j] != -1)
+                    {
+                        if(TrackCheck_pre[TemporalMatch[i][j]] != -1)
+                        {
+                            TrackLets[TrackCheck_pre[TemporalMatch[i][j]]].push_back(make_pair(i+1, j));
+                            TrackCheck_cur[j] = TrackCheck_pre[TemporalMatch[i][j]];
+                        }
+                        else
+                        {
+                            vector<pair<int , int>> TraLet(2);
+                            TraLet[0] = make_pair(i, TemporalMatch[i][j]);
+                            TraLet[1] = make_pair(i+1, j);
+
+                            TrackLets.push_back(TraLet);
+                            ObjectID.push_back(ObjLab[i][j]);
+
+                            TrackCheck_cur[j] = IDsofar;
+                            IDsofar = IDsofar + 1;
+                        }
+                    }
+                }
+            }
+
+            TrackCheck_pre = TrackCheck_cur;
+        }
+
+        mpMap->nObjID = ObjectID;
+
+        cout << endl;
+        cout << "==========================================" << endl;
+        cout << "the number of dynamic feature tracklets: " << TrackLets.size() << endl;
+        cout << "==========================================" << endl;
+        cout << endl;
+
+        vector<int> TrackLength(N, 0);
+        for(int i=0; i<TrackLets.size(); ++i){
+            TrackLength[TrackLets[i].size()-2]++;
+        }
+
+        int LengtjOver_5 = 0;
+        ofstream save_track_distri;
+        string save_td = "track_distribution.txt";
+        save_track_distri.open(save_td.c_str(), ios::trunc);
+        for(int i=0; i<N; ++i)
+        {
+            if(TrackLength[i] != 0)
+                save_track_distri << TrackLength[i] << endl;
+            if(i+2 > 5)
+                LengtjOver_5 = LengtjOver_5 + TrackLength[i];
+        }
+        save_track_distri.close();
+        cout << "Length over 5 (DYNAMIC):::::::::::::::: " << LengtjOver_5 << endl;
+
+        return TrackLets;
+    }
+
+    vector<vector<int>> Tracking::GetObjTrackTime(vector<vector<int>> &ObjTrackLab, vector<vector<int>> &ObjSemanticLab,
+                                                  vector<vector<int>> &vnSMLabGT)
+    {
+        vector<int> TrackCount(max_id-1, 0);
+        vector<int> TrackCountGT(max_id-1, 0);
+        vector<int> SemanticLabel(max_id-1, 0);
+        vector<vector<int>> ObjTrackTime;
+
+        //count each object track
+        for(int i=0; i<ObjTrackLab.size(); ++i)
+        {
+            if(ObjTrackLab[i].size()<2)
+                continue;
+
+            for(int j=1; j<ObjTrackLab[i].size(); ++j)
+            {
+                TrackCount[ObjTrackLab[i][j]-1] = TrackCount[ObjTrackLab[i][j]-1] + 1;
+                SemanticLabel[ObjTrackLab[i][j] - 1] = ObjSemanticLab[i][j];
+            }
+        }
+
+        //count each object track in ground truth
+        for(int i=0; i<vnSMLabGT.size(); ++i)
+        {
+            for(int j=0; j<vnSMLabGT.size(); ++j)
+            {
+                for(int k=0; k<SemanticLabel.size(); ++k)
+                {
+                    if(SemanticLabel[k] == vnSMLabGT[i][j])
+                    {
+                        TrackCountGT[k] = TrackCountGT[k] + 1;
+                        break;
+                    }
+                }
+            }
+        }
+
+        mpMap->nObjTraCount = TrackCountGT;
+        mpMap->nObjTraCountGT = TrackCountGT;
+        mpMap->nObjTraSemLab = SemanticLabel;
+
+        //save to each frame the count number
+        for(int i=0; i<ObjTrackLab.size(); ++i)
+        {
+            vector<int> TrackTimeTmp(ObjTrackLab[i].size(), 0);
+
+            if(TrackTimeTmp.size() < 2)
+            {
+                ObjTrackTime.push_back(TrackTimeTmp);
+                continue;
+            }
+
+            for(int j=1; j<TrackTimeTmp.size(); ++j)
+            {
+                TrackTimeTmp[j] = TrackCount[ObjTrackLab[i][j] - 1];
+            }
+            ObjTrackTime.push_back(TrackTimeTmp);
+        }
+
+        return ObjTrackTime;
+    }
+
+    vector<vector<pair<int, int>>> Tracking::GetDynamicTrack()
+    {
+        vector<vector<cv::KeyPoint>> Feats = mpMap->vpFeatDyn;
+        vector<vector<int>> ObjLab = mpMap->vnFeatLabel;
+        int N = Feats.size();
+
+        vector<vector<pair<int, int>>> TrackLets;
+        //save object id of each tracklets
+        vector<int> ObjectID;
+        //save the track id in TrackLEts for precious frame and current frame
+        vector<int> TrackCheck_pre;
+
+        int IDsofer = 0;
+        for(int i=0; i < N; ++i)
+        {
+            vector<int> TrackCheck_cur(Feats[i].size(), -1);
+
+            if(Feats[i].empty())
+            {
+                TrackCheck_pre = TrackCheck_cur;
+                continue;
+            }
+
+            if(i==0)
+            {
+                int M = Feats[i].size();
+                for(int j=0; j<N; j=j+2)
+                {
+                    vector<pair<int, int>> TraLet(2);
+                    TraLet[0] = make_pair(i, j);
+                    TraLet[1] = make_pair(i, j+1);
+                    TrackLets.push_back(TraLet);
+                    ObjectID.push_back(ObjLab[i][j/2]);
+
+                    TrackCheck_cur[j+1] = IDsofer;
+                    IDsofer = IDsofer + 1;
+                }
+            }
+            else
+            {
+                int M_pre = TrackCheck_pre.size();
+                int M_cur = Feats[i].size();
+
+                if(M_pre == 0)
+                {
+                    for(int j=0; j<M_cur; j=j+2)
+                    {
+                        vector<pair<int, int>> TraLet(2);
+                        TraLet[0] = make_pair(i, j);
+                        TraLet[1] = make_pair(i, j+1);
+                        TrackLets.push_back(TraLet);
+                        ObjectID.push_back(ObjLab[i][j/2]);
+
+                        TrackCheck_cur[j+1] = IDsofer;
+                        IDsofer = IDsofer + 1;
+                    }
+                }
+                else
+                {
+                    vector<int> TM(M_cur, -1);
+                    vector<float> MinDist(M_cur, -1);
+                    int nmatches = 0;
+                    for(int k=1; k<M_pre; k=k+2)
+                    {
+                        float x_ = Feats[i-1][k].pt.x;
+                        float y_ = Feats[i-1][k].pt.y;
+                        float min_dist = 10;
+                        int candi = -1;
+                        for(int j=0; j<M_cur; j=j+2)
+                        {
+                            if(ObjLab[i-1][(k-1)/2] != ObjLab[i][j/2])
+                            {
+                                continue;
+                            }
+                            float x = Feats[i][j].pt.x;
+                            float y = Feats[i][j].pt.y;
+                            float dist = sqrt(pow(x_-x, 2) + pow(y_-y, 2));
+
+                            if(dist < min_dist)
+                            {
+                                min_dist = dist;
+                                candi = j;
+                            }
+                        }
+
+                        if(min_dist < 1.0)
+                        {
+                            if(TM[candi] == -1 || (TM[candi] != -1 * min_dist < MinDist[candi]))
+                            {
+                                TM[candi] = k;
+                                MinDist[candi] = min_dist;
+                                nmatches = nmatches + 1;
+                            }
+                        }
+                    }
+
+                    for(int j=0; j<M_cur; j=j+2)
+                    {
+                        if(TM[j] != -1)
+                        {
+                            TrackLets[TrackCheck_pre[TM[j]]].push_back(make_pair(i, j+1));
+                            TrackCheck_cur[j+1] = TrackCheck_pre[TM[j]];
+                        }
+                        else
+                        {
+                            vector<pair<int, int>> TraLet(2);
+                            TraLet[0] = make_pair(i, j);
+                            TraLet[1] = make_pair(i, j+1);
+
+                            TrackLets.push_back(TraLet);
+                            ObjectID.push_back(ObjLab[i][j/2]);
+
+                            TrackCheck_cur[j+1] = IDsofer;
+                            IDsofer = IDsofer + 1;
+                        }
+                    }
+
+                }
+            }
+
+            TrackCheck_pre = TrackCheck_cur;
+        }
+
+        mpMap->nObjID = ObjectID;
+
+        cout << endl;
+        cout << "==========================================" << endl;
+        cout << "the number of object feature tracklets: " << TrackLets.size()<< endl;
+        cout << endl;
+
+        vector<int> TrackLength(N, 0);
+        for(int i=0; i<TrackLets.size(); ++i)
+        {
+            TrackLength[TrackLets[i].size()-2]++;
+        }
+
+        for(int i=0; i<N; ++i)
+        {
+            cout << "The length of" << i+2 << " tracklets is found with the amount of" << TrackLength[i] << " ...." << endl;
+        }
+        cout << endl;
+
+        return TrackLets;
+    }
+
+    void Tracking::RenewFrameInfo(const std::vector<int> &TM_sta)
+    {
+        cout << endl << "Start Renew Frame informaion ......" << endl;
+
+        //use sampled or detected features
+        int max_num_sta = nMaxTrackPointBG;
+        int max_num_obj = nMaxTrackPointOBJ;
+
+        vector<cv::KeyPoint> mvKeysTmp;
+        vector<cv::KeyPoint> mvCorresTmp;
+        vector<cv::Point2f> mvFlowNexTmp;
+        vector<int> StaInlierIDTmp;
+
+        // save the inliers from last frame
+        for(int i=0; i<TM_sta.size(); ++i)
+        {
+            if(TM_sta[i]==-1)
+            {
+                continue;
+            }
+
+            int x = currentFrame.mvStatKeys[TM_sta[i]].pt.x;
+            int y = currentFrame.mvStatKeys[TM_sta[i]].pt.x;
+
+            if(x >= mImGrayLast.cols || y>=mImGrayLast.rows || x <=0 || y<=0)
+                continue;
+
+            if(mSegMap.at<int>(y, x) != 0)
+                continue;
+
+            if(mDepthMap.at<float>(y, x) > 40 || mDepthMap.at<float>(y, x) <= 0)
+                continue;
+
+            float flow_xe = mFlowMap.at<cv::Vec2f>(y, x)[0];
+            float flow_ye = mFlowMap.at<cv::Vec2f>(y, x)[1];
+
+            if(flow_xe != 0 && flow_ye !=0)
+            {
+                if(currentFrame.mvStatKeys[TM_sta[i]].pt.x + flow_xe < mImGrayLast.cols &&
+                    currentFrame.mvStatKeys[TM_sta[i]].pt.y + flow_ye < mImGrayLast.rows &&
+                    currentFrame.mvStatKeys[TM_sta[i]].pt.x+flow_xe>0 && currentFrame.mvStatKeys[TM_sta[i]].pt.y + flow_ye>0)
+                {
+                    mvKeysTmp.push_back(currentFrame.mvStatKeys[TM_sta[i]]);
+                    mvCorresTmp.push_back(cv::KeyPoint(currentFrame.mvStatKeys[TM_sta[i]].pt.x+flow_xe, currentFrame.mvStatKeys[TM_sta[i]].pt.y+flow_ye, 0, 0, 0, -1));
+                    mvFlowNexTmp.push_back(cv::Point2f(flow_xe, flow_ye));
+                    StaInlierIDTmp.push_back(TM_sta[i]);
+                }
+            }
+
+            if(mvKeysTmp.size() > max_num_sta)
+                break;
+        }
+
+        //save extra key points to make it a fixed number
+        int tot_num = mvKeysTmp.size(), start_id = 0, step= 20;
+        vector<cv::KeyPoint> mvKeysTmpCheck = mvKeysTmp;
+        vector<cv::KeyPoint> mvKeysSample;
+        if(nUseSampleFea==1)
+            mvKeysSample = currentFrame.mvStatKeysTmp;
+        else
+            mvKeysSample = currentFrame.mvKeys;
+        while(tot_num < max_num_sta)
+        {
+            if(start_id == step)
+                break;
+            for(int i=start_id; i<mvKeysSample.size(); i=i+step)
+            {
+                //check if this key point is already been used
+                float min_dist = 100;
+                bool used = false;
+                for(int j=0; j>mvKeysTmpCheck.size(); ++j)
+                {
+                    float cur_dist = sqrt(pow(mvKeysTmpCheck[j].pt.x-mvKeysSample[i].pt.x, 2)+pow(mvKeysTmpCheck[j].pt.y-mvKeysSample[i].pt.y, 2));
+                    if(cur_dist<min_dist)
+                    {
+                        min_dist = cur_dist;
+                    }
+                    if(min_dist < 1.0)
+                    {
+                        used = true;
+                        break;
+                    }
+                }
+                if(used)
+                    continue;
+
+                int x = mvKeysSample[i].pt.x;
+                int y = mvKeysSample[i].pt.y;
+
+                if(x >= mImGrayLast.cols || y >= mImGrayLast.rows || x<=0 || y<=0)
+                    continue;
+
+                if(mSegMap.at<int>(y, x) != 0)
+                    continue;
+                if(mDepthMap.at<float>(y, x)>40 || mDepthMap.at<float>(y, x) <= 0)
+                    continue;
+
+                float flow_xe = mFlowMap.at<cv::Vec2f>(y, x)[0];
+                float flow_ye = mFlowMap.at<cv::Vec2f>(y, x)[1];
+
+                if(flow_xe != 0 && flow_ye != 0)
+                {
+                    if(mvKeysSample[i].pt.x+flow_xe<mImGrayLast.cols && mvKeysSample[i].pt.y+flow_ye < mImGrayLast.rows &&
+                        mvKeysSample[i].pt.x+flow_xe >0 && mvKeysSample[i].pt.y + flow_ye > 0)
+                    {
+                        mvKeysTmp.push_back(mvKeysSample[i]);
+                        mvCorresTmp.push_back(cv::KeyPoint(mvKeysSample[i].pt.x + flow_xe, mvKeysSample[i].pt.y+flow_ye, 0, 0, 0, -1));
+                        mvFlowNexTmp.push_back(cv::Point2f(flow_xe, flow_ye));
+                        StaInlierIDTmp.push_back(-1);
+                        tot_num = tot_num + 1;
+                    }
+                }
+
+                if(tot_num >= max_num_sta)
+                    break;
+            }
+
+            start_id = start_id + 1;
+        }
+
+        currentFrame.N_s_tmp = mvKeysTmp.size();
+
+        //assign the depth value to each key point
+        vector<float> mvDepthTmp(currentFrame.N_s_tmp, -1);
+        for(int i=0; i<currentFrame.N_s_tmp; i++)
+        {
+            const cv::KeyPoint &kp = mvKeysTmp[i];
+
+            const float &v = kp.pt.y;
+            const float &u = kp.pt.x;
+
+            float d = mDepthMap.at<float>(v, u);
+            if(d >0)
+                mvDepthTmp[i] = d;
+        }
+
+        //create 3d point based on key point, depth and pose
+        vector<cv::Mat> mv3DPointTmp(currentFrame.N_s_tmp);
+        for(int i=0; i<currentFrame.N_s_tmp; ++i)
+        {
+            mv3DPointTmp[i] = Optimizer::Get3DinWorld(mvKeysTmp[i], mvDepthTmp[i], mK, Converter::toInvMatrix(currentFrame.camPose));
+        }
+
+        //obtain inlier ID
+        currentFrame.nStatInlierID = StaInlierIDTmp;
+
+        //update
+        currentFrame.mvStatKeysTmp = mvKeysTmp;
+        currentFrame.mvStatDepthTmp = mvDepthTmp;
+        currentFrame.mvStat3DPointTmp = mv3DPointTmp;
+        currentFrame.mvFlowNext = mvFlowNexTmp;
+        currentFrame.mvCorres = mvCorresTmp;
+
+       //update for Dynamic object Features-----------------
+
+       vector<cv::KeyPoint> mvObjKeysTmp;
+       vector<float> mvObjDepthTmp;
+       vector<cv::KeyPoint> mvObjCorresTmp;
+       vector<cv::Point2f> mvObjFlowNextTmp;
+       vector<int> vSemObjLabelTmp;
+       vector<int> DynInlierIDTmp;
+       vector<int> vObjLabelTmp;
+
+       //again, save the inliers from last frame
+       vector<vector<int>> ObjInlierSet = currentFrame.vnObjInlierID;
+       vector<int> ObjFeaCount(ObjInlierSet.size());
+       for(int i=0; i<ObjInlierSet.size(); ++i)
+       {
+           //remove failure object
+           if(!currentFrame.bObjStat[i])
+           {
+               ObjFeaCount[i] = -1;
+               continue;
+           }
+
+           int count = 0;
+           for(int j=0; j<ObjInlierSet[i].size(); ++j)
+           {
+               const int x = currentFrame.mvObjKeys[ObjInlierSet[i][j]].pt.x;
+               const int y = currentFrame.mvObjKeys[ObjInlierSet[i][j]].pt.y;
+
+               if(x>=mImGrayLast.cols || y>=mImGrayLast.rows || x<=0 || y<=0)
+                   continue;
+               if(mSegMap.at<int>(y, x) != 0 && mDepthMap.at<float>(y, x) < 25 && mDepthMap.at<float>(y, x)>0)
+               {
+                   const float flow_x = mFlowMap.at<cv::Vec2f>(y, x)[0];
+                   const float flow_y = mFlowMap.at<cv::Vec2f>(y, x)[1];
+
+                   if(x+flow_x < mImGrayLast.cols && y+flow_y < mImGrayLast.rows && x+flow_x > 0 && y+flow_y > 0)
+                   {
+                       mvObjKeysTmp.push_back(cv::KeyPoint(x, y, 0, 0, 0, -1));
+                       mvObjDepthTmp.push_back(mDepthMap.at<float>(y, x));
+                       vSemObjLabelTmp.push_back(mSegMap.at<int>(y, x));
+                       mvObjFlowNextTmp.push_back(cv::Point2f(flow_x, flow_y));
+                       mvObjCorresTmp.push_back(cv::KeyPoint(x+flow_x, y+flow_y, 0, 0, 0, -1));
+                       DynInlierIDTmp.push_back(ObjInlierSet[i][j]);
+                       vObjLabelTmp.push_back(currentFrame.objLabel[ObjInlierSet[i][j]]);
+                       count = count + 1;
+                   }
+               }
+           }
+           ObjFeaCount[i] = count;
+       }
+
+       //save extra key points to make each oject having a fixed number
+       vector<vector<int>> ObjSet = currentFrame.vnObjID;
+       vector<cv::KeyPoint> mvObjKeysTmpCheck = mvObjKeysTmp;
+       for(int i=0; i<ObjSet.size(); ++i)
+       {
+           //remove failure object
+           if(!currentFrame.bObjStat[i])
+               continue;
+
+           int SemLabel = currentFrame.nSemPosition[i];
+           int tot_num = ObjFeaCount[i];
+           int start_id = 0, step = 15;
+           while(tot_num < max_num_obj)
+           {
+               if(start_id==step)
+               {
+                   break;
+               }
+
+               for(int j=start_id; j<mvTmpSemObjLabel.size(); j=j+step)
+               {
+                   //check the semantic label if it is the same
+                   if(mvTmpSemObjLabel[j] != SemLabel)
+                       continue;
+
+                   //check if this key point is already been used
+                   float min_dst = 100;
+                   bool used = false;
+                   for(int k=0; k<mvObjKeysTmpCheck.size(); ++k)
+                   {
+                       float cur_dist = sqrt(pow(mvObjKeysTmpCheck[k].pt.x-mvTmpObjKeys[j].pt.x, 2) + pow(mvObjKeysTmpCheck[k].pt.y-mvTmpObjKeys[j].pt.y, 2));
+                       if(cur_dist < min_dst)
+                           min_dst = cur_dist;
+                       if(min_dst < 1.0)
+                       {
+                           used = true;
+                           break;
+                       }
+                   }
+                   if(used)
+                       continue;
+
+                   //save the found one
+                   mvObjKeysTmp.push_back(mvTmpObjKeys[j]);
+                   mvObjDepthTmp.push_back(mvTmpObjectDepth[j]);
+                   vSemObjLabelTmp.push_back(mvTmpSemObjLabel[j]);
+                   mvObjFlowNextTmp.push_back(mvTmpObjFlowNext[j]);
+                   mvObjCorresTmp.push_back(mvTmpObjCorres[j]);
+                   DynInlierIDTmp.push_back(-1);
+                   vObjLabelTmp.push_back(currentFrame.nModLabel[i]);
+                   tot_num = tot_num + 1;
+
+                   if(tot_num >= max_num_obj)
+                   {
+                       break;
+                   }
+               }
+               start_id = start_id + 1;
+           }
+       }
+
+       //update new appearing objects
+       //find the unique labels in semantic label
+       auto UniLab = mvTmpSemObjLabel;
+       sort(UniLab.begin(), UniLab.end());
+       UniLab.erase(unique(UniLab.begin(), UniLab.end()), UniLab.end());
+       //find new appearing label
+       vector<bool> NewLab(UniLab.size(), false);
+       for(int i=0; i<currentFrame.nSemPosition.size(); ++i)
+       {
+           int CurSemLabel = currentFrame.nSemPosition[i];
+           for(int j=0; j<UniLab.size(); ++j)
+           {
+               if(UniLab[j]==CurSemLabel && currentFrame.bObjStat[i])
+               {
+                   NewLab[j] = true;
+                   break;
+               }
+           }
+       }
+
+       //add the new object key points
+       for(int i=0; i<NewLab.size(); ++i)
+       {
+           if(NewLab[i]==false)
+           {
+               for(int j=0; j<mvTmpSemObjLabel.size(); j++)
+               {
+                   if(UniLab[i]==mvTmpSemObjLabel[j])
+                   {
+                       //save the found one
+                       mvObjKeysTmp.push_back(mvTmpObjKeys[j]);
+                       mvObjDepthTmp.push_back(mvTmpObjectDepth[j]);
+                       vSemObjLabelTmp.push_back(mvTmpSemObjLabel[j]);
+                       mvObjFlowNextTmp.push_back(mvTmpObjFlowNext[j]);
+                       mvObjCorresTmp.push_back(mvTmpObjCorres[j]);
+                       DynInlierIDTmp.push_back(-1);
+                       vObjLabelTmp.push_back(-2);
+                   }
+               }
+           }
+       }
+
+       //create 3d point based on key point, depth and pose
+       vector<cv::Mat> mvObj3DPointTmp(mvObjKeysTmp.size());
+       for(int i=0; i<mvObjKeysTmp.size(); ++i)
+       {
+           mvObj3DPointTmp[i] = Optimizer::Get3DinWorld(mvObjKeysTmp[i], mvObjDepthTmp[i], mK, Converter::toInvMatrix(currentFrame.camPose));
+       }
+
+       //update
+       currentFrame.mvObjKeys = mvObjKeysTmp;
+       currentFrame.mvObjDepth = mvObjDepthTmp;
+       currentFrame.mvObj3DPoint = mvObj3DPointTmp;
+       currentFrame.mvObjCorres = mvObjCorresTmp;
+       currentFrame.mvObjFlowNext = mvObjFlowNextTmp;
+       currentFrame.vSemLabelTmp = vSemObjLabelTmp;
+       currentFrame.nDynInlierID = DynInlierIDTmp;
+       currentFrame.objLabel = vObjLabelTmp;
+
+       cout << "Renew Frame Info, Done !" << endl;
+    }
+
+    void Tracking::UpdateMask()
+    {
+        cout << "Update Mask ......." << endl;
+
+        //find the unique labels in semantic label
+        auto UniLab = mLastFrame.semObjLabel;
+        sort(UniLab.begin(), UniLab.end());
+        UniLab.erase(unique(UniLab.begin(), UniLab.end()), UniLab.end());
+
+        //collect the predict labels and semantic labels in levels
+        vector<vector<int>> ObjID(UniLab.size());
+        for(int i=0; i<mLastFrame.semObjLabel.size(); ++i)
+        {
+            //save object label
+            for(int j=0; j<UniLab.size(); ++j)
+            {
+                if(mLastFrame.semObjLabel[i] == UniLab[j]){
+                    ObjID[j].push_back(i);
+                    break;
+                }
+            }
+        }
+
+        //check each object label distribution in the coming frame
+        for(int i=0; i<ObjID.size(); ++i)
+        {
+            //collect labels
+            vector<int> LabTmp;
+            for(int j=0; j<ObjID[i].size(); ++j)
+            {
+                const int u = mLastFrame.mvObjCorres[ObjID[i][j]].pt.x;
+                const int v = mLastFrame.mvObjCorres[ObjID[i][j]].pt.y;
+                if(u<mImGray.cols && u>0 && v<mImGray.rows && v>0)
+                {
+                    LabTmp.push_back(mSegMap.at<int>(v, u));
+                }
+            }
+        }
     }
 }
