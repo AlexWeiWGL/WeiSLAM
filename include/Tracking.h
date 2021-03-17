@@ -51,7 +51,7 @@ namespace WeiSLAM{
 
             vector<vector<int>> DynObjTracking();
 
-            void DrawLine(cv::KeyPoint &keys, cv::Point2f &flow, cv::Mat &ref_image, const cv::Scalar * color,
+            void DrawLine(cv::KeyPoint &keys, cv::Point2f &flow, cv::Mat &ref_image, const cv::Scalar &color,
                           int thickness=2, int line_type=1, const cv::Point2i &offset=cv::Point2i(0, 0));
             void DrawTransparentSquare(cv::Point center, cv::Vec3b color, int raduis, double alpha, cv::Mat &ref_image);
             void DrawGridBirdeye(double res_x, double res_z, const BirdEyeVizProperties &viz_props, cv::Mat &ref_image);

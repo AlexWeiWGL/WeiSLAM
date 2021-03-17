@@ -1525,5 +1525,216 @@ namespace WeiSLAM{
         }
     }
 
-    
+    void Tracking::DrawGridBirdeye(double res_x, double res_z, const BirdEyeVizProperties & viz_props, cv::Mat &ref_image)
+    {
+        auto color = cv::Scalar(0.0, 0.0, 0.0);
+        //draw horizontal lines
+        for(double i=0; i<viz_props.birdeye_far_plane_; i+=res_z){
+            double x_1 = viz_props.birdeye_left_plane_;
+            double y_1 = i;
+            double x_2 = viz_props.birdeye_right_plane_;
+            double y_2 = i;
+            TransformPointToScaledFrustum(x_1, y_1, viz_props);
+            TransformPointToScaledFrustum(x_2, y_2, viz_props);
+            auto p1 = cv::Point(x_1, y_1), p2 = cv::Point(x_2, y_2);
+            cv::line(ref_image, p1, p2, color);
+        }
+
+        //draw vertical lines
+        for(double i=viz_props.birdeye_left_plane_; i<viz_props.birdeye_right_plane_; i+=res_x)
+        {
+            double x_1 = i;
+            double y_1 = 0;
+            double x_2 = i;
+            double y_2 = viz_props.birdeye_far_plane_;
+            TransformPointToScaledFrustum(x_1, y_1, viz_props);
+            TransformPointToScaledFrustum(x_2, y_2, viz_props);
+            auto p1 = cv::Point(x_1, y_1), p2 = cv::Point(x_2, y_2);
+            cv::line(ref_image, p1, p2, color);
+        }
+    }
+
+
+    void Tracking::DrawSparseFlowBirdeye(
+            const vector<Eigen::Vector3d> &ots, const vector<Eigen::Vector3d> &vel,
+            const cv::Mat &camera, const BirdEyeVizProperties &viz_props, cv::Mat &ref_image)
+    {
+        //for scaling / flipping conv.matrics
+        Eigen::Matrix2d flip_mat;
+        flip_mat << viz_props.birdeye_scale_factor_*1.0 ,0, 0, viz_props.birdeye_scale_factor_*1.0;
+        Eigen::Matrix2d world_to_cam_mat;
+        const Eigen::Matrix4d &ref_to_rt_inv = Converter::toMatrix4d(camera);
+        world_to_cam_mat << ref_to_rt_inv(0, 0), ref_to_rt_inv(2, 0), ref_to_rt_inv(0, 2), ref_to_rt_inv(2, 2);
+        flip_mat = flip_mat*world_to_cam_mat;
+
+        //Parameters
+        ref_image = cv::Mat(viz_props.birdeye_scale_factor_*viz_props.birdeye_far_plane_,
+                                (-viz_props.birdeye_left_plane_+viz_props.birdeye_right_plane_)*viz_props.birdeye_scale_factor_, CV_32FC3);
+        ref_image.setTo(cv::Scalar(1.0, 1.0, 1.0));
+        Tracking::DrawGridBirdeye(1.0, 1.0, viz_props, ref_image);
+
+        for(int i=0; i<pts.size(); i++)
+        {
+            Eigen::Vector3d p_3d = pts[i];
+            Eigen::Vector3d p_vel = vel[i];
+
+            if(p_3d[0] == -1 || p_3d[1]==  -1 || p_3d[2] < 0)
+                continue;
+            if(p_vel[0] > 0.1 || p_vel[2] > 0.1)
+                continue;
+            
+            const Eigen::Vector2d velocity = Eigen::Vector2d(p_vel[0], p_vel[2]);
+            Eigen::Vector3d dir(velocity[0], 0.0, velocity[1]);
+
+            double x_1 = p_3d[0];
+            double z_1 = p_3d[2];
+
+            double x_2 = x_1 + dir[0];
+            double z_2 = z_1 + dir[2];
+
+            if(x_1 > viz_props.birdeye_left_plane_ && x_2 > viz_props.birdeye_left_plane_ &&
+               x_1 < viz_props.birdeye_right_plane_ && x_2 <viz_props.birdeye_right_plane_ &&
+               z_1 >0 && z_2 > 0 &&
+               z_1 < viz_props.birdeye_far_plane_ && z_2 < viz_props.birdeye_far_plane_){
+
+                   TransformPointToScaledFrustum(x_1, z_1, viz_props);
+                   TransformPointToScaledFrustum(x_2, z_2, viz_props);
+
+                   cv::arrowedLine(ref_image, cv::Point(x_1, z_1), cv::Point(x_2, z_2), cv::Scalar(1.0, 0.0, 0.0), 1);
+                   cv::circle(ref_image, cv::Point(x_1, z_1), 3.0, cv::Scalar(0.0, 0.0, 1.0), -1.0);
+            }
+        }
+
+        //coord. sys.
+        int arrow_len = 60;
+        int offset_y = 10;
+        cv::arrowedLine(ref_image, cv::Point(ref_image.cols/2, offset_y),
+                        cv::Point(ref_image.cols/2 + arrow_len, offset_y),
+                        cv::Scalar(1.0, 0, 0), 2);
+        cv::arrowedLine(ref_image, cv::Point(ref_image.cols/2, offset_y),
+                        cv::Point(ref_image.cols/2, offset_y+arrow_len),
+                        cv::Scalar(0.0, 1.0, 0), 2);
+        
+        //flip image, because it is more intuitive to have ref. point at the bottom of the image
+        cv::Mat dst;
+        cv::flip(ref_image, dst, 0);
+        ref_image = dst;
+
+    }
+
+    void Tracking::TransformPointToScaledFrustum(double &pose_x, double &pose_z, const BirdEyeVizProperties &viz_props)
+    {
+        pose_x += (-viz_props.birdeye_left_plane_);
+        pose_x *= viz_props.birdeye_scale_factor_;
+        pose_z *= viz_props.birdeye_scale_factor_;
+    }
+
+    cv::Mat Tracking::ObjPoseParsingKT(const vector<float> &vObjPose_gt){
+        //assign t vector
+        cv::Mat t(3, 1, CV_32FC1);
+        t.at<float>(0) = vObjPose_gt[6];
+        t.at<float>(1) = vObjPose_gt[7];
+        t.at<float>(2) = vObjPose_gt[8];
+
+        //from Euler to Rotation matrix
+        cv::Mat R(3, 3, CV_32FC1);
+
+        //assign r vector
+        float y = vObjPose_gt[9] + (CV_PI/2);
+        float x = 0.0;
+        float z = 0.0;
+
+        //the angles are in radians
+        float cy = cos(y);
+        float sy = sin(y);
+        float cx = cos(x);
+        float sx = sin(x);
+        float cz = cos(z);
+        float sz = sin(z);
+
+        float m00, m01, m02, m10, m11, m12, m20, m21, m22;
+        //R = Ry* Rx * Rz
+
+        m00 = cy*cz + sy*sz*sx;
+        m01 = -cy*sz + sy*sx*cz;
+        m02 = sy*cx;
+        m10 = cx*sz;
+        m11 = cx*cz;
+        m12 = -sx;
+        m20 = -sy*cz + cy*sx*sz;
+        m21 = sy*sz + cy*sx*cz;
+        m22 = cy*cx;
+
+        R.at<float>(0, 0) = m00;
+        R.at<float>(0, 1) = m01;
+        R.at<float>(1, 1) = m11;
+        R.at<float>(0, 2) = m02;
+        R.at<float>(1, 0) = m10;
+        R.at<float>(1, 2) = m12;
+        R.at<float>(2, 0) = m20;
+        R.at<float>(2, 1) = m21;
+        R.at<float>(2, 2) = m22;
+
+        cv::Mat Pose = cv::Mat::eye(4, 4, CV_32F);
+        Pose.at<float>(0,0) = R.at<float>(0,0); Pose.at<float>(0,1) = R.at<float>(0,1); Pose.at<float>(0,2) = R.at<float>(0,2); Pose.at<float>(0,3) = t.at<float>(0);
+        Pose.at<float>(1,0) = R.at<float>(1,0); Pose.at<float>(1,1) = R.at<float>(1,1); Pose.at<float>(1,2) = R.at<float>(1,2); Pose.at<float>(1,3) = t.at<float>(1);
+        Pose.at<float>(2,0) = R.at<float>(2,0); Pose.at<float>(2,1) = R.at<float>(2,1); Pose.at<float>(2,2) = R.at<float>(2,2); Pose.at<float>(2,3) = t.at<float>(2);
+
+
+        return Pose;
+    }
+
+    cv::Mat Tracking::ObjPoseParsingOx(const vector<float> &vObjPose_gt)
+    {
+        //assign t vector
+        cv::Mat t(3, 1, CV_32FC1);
+        t.at<float>(0) = vObjPose_gt[2];
+        t.at<float>(1) = vObjPose_gt[3];
+        t.at<float>(2) = vObjPose_gt[4];
+
+        //from axis-angle to Rotation Matrix
+        cv::Mat R(3, 3, CV_32FC1);
+        cv::Mat Rvec(3, 1, CV_32FC1);
+
+        //assign r vector
+        Rvec.at<float>(0, 0) = vObjPose_gt[5];
+        Rvec.at<float>(0, 1) = vObjPose_gt[6];
+        Rvec.at<float>(0, 2) = vObjPose_gt[7];
+
+        const float angle = sqrt(pow(vObjPose_gt[5], 2) + pow(vObjPose_gt[6], 2) + pow(vObjPose_gt[7], 2));
+        if(angle > 0)
+        {
+            Rvec.at<float>(0, 0) = Rvec.at<float>(0, 0)/angle;
+            Rvec.at<float>(0, 1) = Rvec.at<float>(0, 1)/angle;
+            Rvec.at<float>(0, 2) = Rvec.at<float>(0, 2)/angle;
+        }
+
+        const float s = sin(angle);
+        const float c = cos(angle);
+
+        const float v = 1-c;
+        const float x = Rvec.at<float>(0, 0);
+        const float y = Rvec.at<float>(0, 1);
+        const float z = Rvec.at<float>(0, 2);
+        const float xyv = x*y*v;
+        const float yzv = y*z*v;
+        const float xzv = x*z*v;
+
+        R.at<float>(0, 0) = x*x*v + c;
+        R.at<float>(0, 1) = xyv - z*s;
+        R.at<float>(0, 2) = xzv + y*s;
+        R.at<float>(1, 0) = xyv + z*s;
+        R.at<float>(1, 1) = y*y*v + c;
+        R.at<float>(1, 2) = yzv - x*s;
+        R.at<float>(2, 0) = xzv - y*s;
+        R.at<float>(2, 1) = yzv + x*s;
+        R.at<float>(2, 2) = z*z*v + c;
+
+        cv::Mat Pose = cv::Mat::eye(4, 4, CV_32F);
+        Pose.at<float>(0,0) = R.at<float>(0,0); Pose.at<float>(0,1) = R.at<float>(0,1); Pose.at<float>(0,2) = R.at<float>(0,2); Pose.at<float>(0,3) = t.at<float>(0);
+        Pose.at<float>(1,0) = R.at<float>(1,0); Pose.at<float>(1,1) = R.at<float>(1,1); Pose.at<float>(1,2) = R.at<float>(1,2); Pose.at<float>(1,3) = t.at<float>(1);
+        Pose.at<float>(2,0) = R.at<float>(2,0); Pose.at<float>(2,1) = R.at<float>(2,1); Pose.at<float>(2,2) = R.at<float>(2,2); Pose.at<float>(2,3) = t.at<float>(2);
+
+        return Converter::toInvMatrix(mOriginInv*Pose);
+    }
 }
