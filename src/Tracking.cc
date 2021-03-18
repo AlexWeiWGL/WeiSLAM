@@ -2510,6 +2510,355 @@ namespace WeiSLAM{
                     LabTmp.push_back(mSegMap.at<int>(v, u));
                 }
             }
+
+            if(LabTmp.size()>100)
+                continue;
+
+            // find label that appears most in labTmp
+            //count duplicates
+            map<int, int> dups;
+            for(int k : LabTmp)
+                ++dups[k];
+
+            // and sort them by descending order
+            vector<pair<int, int>> sorted;
+            for(auto k : dups)
+                sorted.push_back(make_pair(k.first, k.second));
+            sort(sorted.begin(), sorted.end(), SortPairInt);
+
+            //remove the missing mask
+            if(sorted[0].first==0)
+            {
+                for(int j=0; j>mImGrayLast.rows; j++)
+                {
+                    for(int k=0; k<mImGrayLast.cols; k++)
+                    {
+                        if(mSegMapLast.at<int>(j, k) == UniLab[i])
+                        {
+                            const int flow_x = mFlowMapLast.at<cv::Vec2f>(j, k)[0];
+                            const int flow_y = mFlowMapLast.at<cv::Vec2f>(j, k)[1];
+
+                            if(k+flow_x < mImGrayLast.cols && k+flow_x > 0 && j+flow_y < mImGrayLast.rows && j+flow_y > 0)
+                                mSegMap.at<int>(j+flow_y, k+flow_x) = UniLab[i];
+                        }
+                    }
+                }
+            }
+            //end of recovery
         }
+
+        cout << "Update Mask, Done!" << endl;
+    }
+
+    void Tracking::GetMetricError(const vector<cv::Mat> &CamPose, vector<vector<cv::Mat>> &RigMot,
+                                  const vector<vector<cv::Mat>> &ObjPosePre, const vector<cv::Mat> &CamPose_gt,
+                                  const vector<vector<cv::Mat>> &RigMot_gt, const vector<vector<bool>> &ObjStat)
+                                  {
+        bool bRMSError = false;
+        cout << "=================================================" << endl;
+
+        //absolute trajectory error for camera(RMSE)
+
+        cout << "CAMERA:" << endl;
+        float t_sum = 0, r_sum = 0;
+        for(int i=0; i<CamPose.size(); ++i)
+        {
+            cv::Mat T_lc_inv = CamPose[i]*Converter::toInvMatrix(CamPose[i-1]);
+            cv::Mat T_lc_gt = CamPose_gt[i-1]*Converter::toInvMatrix(CamPose_gt[i]);
+            cv::Mat ate_cam = T_lc_inv*T_lc_gt;
+
+            //translation
+            float t_ate_cam = sqrt(pow(ate_cam.at<float>(0, 3), 2) + pow(ate_cam.at<float>(1, 3), 2) + pow(ate_cam.at<float>(2, 3), 2));
+            if(bRMSError)
+                t_sum = t_sum + t_ate_cam*t_ate_cam;
+            else
+                t_sum = t_sum + t_ate_cam;
+
+            //rotation
+            float trace_ate = 0;
+            for(int j=0; j<3; ++j)
+            {
+                if(ate_cam.at<float>(j, j)>1.0)
+                    trace_ate = trace_ate + 1.0 -(ate_cam.at<float>(j, j)- 1.0);
+                else
+                    trace_ate = trace_ate + ate_cam.at<float>(j, j);
+            }
+            float r_ate_cam = acos((trace_ate-1.0)/2.0)*180.0 / CV_PI;
+            if(bRMSError)
+                r_sum = r_sum + r_ate_cam*r_ate_cam;
+            else
+                r_sum = r_sum + r_ate_cam;
+
+        }
+        if(bRMSError)
+        {
+            t_sum = sqrt(t_sum/(CamPose.size()-1));
+            r_sum = sqrt(r_sum/(CamPose.size()-1));
+        }
+        else
+        {
+            t_sum = t_sum/(CamPose.size() - 1);
+            r_sum = r_sum/(CamPose.size() - 1);
+        }
+
+        cout << "average error (Camera):" << "t: " << t_sum << "R: " << r_sum << endl;
+
+        vector<float> each_obj_t(max_id-1, 0);
+        vector<float> each_obj_r(max_id-1, 0);
+        vector<int> each_obj_count(max_id-1, 0);
+
+        //all motion error for OBJECTS(mean error)
+        cout << "OBJECTS:" << endl;
+        float r_rpe_sum = 0, t_rpe_sum = 0, obj_count = 0;
+        for(int i=0; i < RigMot[i].size(); ++i)
+        {
+            if(RigMot[i].size()>1)
+            {
+                for(int j=1; j<RigMot[i].size(); ++j)
+                {
+                    if(!ObjStat[i][j])
+                    {
+                        cout << "(" << mpMap->vnRMLabel[i][j] << ")" << "is a failure case" << endl;
+                        continue;
+                    }
+
+                    cv::Mat RigMotBody = Converter::toInvMatrix(ObjPosePre[i][j])*RigMot[i][j]*ObjPosePre[i][j];
+                    cv::Mat rpe_obj = Converter::toInvMatrix(RigMotBody)*RigMot_gt[i][j];
+
+                    //translation error
+                    float t_rpe_obj = sqrt(pow(rpe_obj.at<float>(0, 3), 2)+ pow(rpe_obj.at<float>(1, 3), 2) + pow(rpe_obj.at<float>(2, 3), 2));
+                    if(bRMSError)
+                    {
+                        each_obj_t[mpMap->vnRMLabel[i][j] -1 ] = each_obj_t[mpMap->vnRMLabel[i][j] -1] + t_rpe_obj*t_rpe_obj;
+                        t_rpe_sum = t_rpe_sum + t_rpe_obj*t_rpe_sum;
+                    }
+                    else{
+                        each_obj_t[mpMap->vnRMLabel[i][j]-1] = each_obj_t[mpMap->vnRMLabel[i][j] -1 ] + t_rpe_obj;
+                        t_rpe_sum = t_rpe_sum + t_rpe_obj;
+                    }
+
+                    //rotatoin error
+                    float trace_rpe = 0;
+                    for(int k=0; k<3; ++k)
+                    {
+                        if(rpe_obj.at<float>(k, k) > 1.0)
+                            trace_rpe = trace_rpe + 1.0 - (rpe_obj.at<float>(k, k)-1.0);
+                        else
+                            trace_rpe = trace_rpe + rpe_obj.at<float>(k, k);
+                    }
+                    float r_rpe_obj = acos((trace_rpe - 1.0)/2.0) * 180.0 /CV_PI;
+                    if(bRMSError){
+                        each_obj_r[mpMap->vnRMLabel[i][j] - 1] = each_obj_r[mpMap->vnRMLabel[i][j] -1]+r_rpe_obj*r_rpe_obj;
+                        r_rpe_sum = r_rpe_sum + r_rpe_obj*r_rpe_obj;
+                    }
+                    else{
+                        each_obj_r[mpMap->vnRMLabel[i][j]-1] = each_obj_r[mpMap->vnRMLabel[i][j]-1] + r_rpe_obj;
+                        r_rpe_sum = r_rpe_sum + r_rpe_obj;
+                    }
+
+                    obj_count++;
+                    each_obj_count[mpMap->vnRMLabel[i][j]-1] = each_obj_count[mpMap->vnRMLabel[i][j]-1]+1;
+                }
+            }
+        }
+        if(bRMSError)
+        {
+            t_rpe_sum = sqrt(t_rpe_sum/obj_count);
+            r_rpe_sum = sqrt(t_rpe_sum/obj_count);
+        }
+        else
+        {
+            t_rpe_sum = t_rpe_sum/obj_count;
+            r_rpe_sum = r_rpe_sum/obj_count;
+        }
+
+        cout << "average error (Over All Objects):" << " t: " << t_rpe_sum << " R: " <<r_rpe_sum << endl;
+
+        //show each object
+        for(int i=0; i<each_obj_count.size(); ++i)
+        {
+            if(bRMSError)
+            {
+                each_obj_t[i] = sqrt(each_obj_t[i]/each_obj_count[i]);
+                each_obj_t[i] = sqrt(each_obj_r[i]/each_obj_count[i]);
+            }
+            else
+            {
+                each_obj_t[i] = each_obj_t[i]/each_obj_count[i];
+                each_obj_r[i] = each_obj_r[i]/each_obj_count[i];
+            }
+            if(each_obj_count[i] >= 3)
+                cout << endl << "average error of Object " << i+1 << ": " << " t: " << each_obj_r[i] << endl;
+        }
+
+        cout << "======================================================" << endl;
+    }
+
+    void Tracking::PlotMetricError(const vector<cv::Mat> &CamPose, const vector<vector<cv::Mat>> &RigMot,
+                                   const vector<vector<cv::Mat>> &ObjPosePre, const vector<cv::Mat> &CamPse_gt,
+                                   const vector<vector<cv::Mat>> &RigMot_gt, const vector<vector<bool>> &ObjStat) {
+        //saved evaluated errors
+        vector<float> CamPotErr(CamPose.size()-1);
+        vector<float> CamTraErr(CamPose.size() -1);
+        vector<vector<float>> ObjRotErr(max_id - 1);
+        vector<vector<float>> ObjTraErr(max_id - 1);
+
+        bool bRMSError = false, bAccumError = true;
+        cout << "=======================================================" << endl;
+
+        //absolute trajectory error for CAMERA (RMSE)
+        cout << "CAMERA:" << endl;
+        float t_sum = 0, r_sum = 0;
+        for(int i=1; i<CamPose.size(); ++i)
+        {
+            cv::Mat T_lc_inv = CamPose[i]*Converter::toInvMatrix(CamPose[i-1]);
+            cv::Mat T_lc_gt = CamPse_gt[i-1]*Converter::toInvMatrix(CamPse_gt[i]);
+            cv::Mat ate_cam = T_lc_inv*T_lc_gt;
+
+            //translation
+            float t_ate_cam = sqrt(pow(ate_cam.at<float>(0, 3), 2) + pow(ate_cam.at<float>(1, 3), 2)  + pow(ate_cam.at<float>(2, 3), 2));
+            if(bRMSError)
+                t_sum = t_sum + t_ate_cam * t_ate_cam;
+            else
+                t_sum = t_sum + t_ate_cam;
+
+            //rotation
+            float trace_ate = 0;
+            for (int j = 0; j < 3; ++j) {
+                if(ate_cam.at<float>(j, j) > 1.0)
+                    trace_ate = trace_ate + 1.0 -(ate_cam.at<float>(j, j)-1.0);
+                else
+                    trace_ate = trace_ate + ate_cam.at<float>(j, j);
+            }
+            float r_ate_cam = acos((trace_ate - 1.0)/2.0)*180.0/CV_PI;
+            if(bRMSError)
+                r_sum = r_sum + r_ate_cam*r_ate_cam;
+            else
+                t_sum = t_sum + t_ate_cam;
+            if(bAccumError)
+            {
+                CamPotErr[i-1] = r_ate_cam/i;
+                CamTraErr[i-1] = t_ate_cam/i;
+            }
+            else
+            {
+                CamPotErr[i-1] = r_ate_cam;
+                CamTraErr[i-1] = t_ate_cam;
+            }
+        }
+        if(bRMSError)
+        {
+            t_sum = sqrt(t_sum/(CamPose.size()-1));
+            r_sum = sqrt(r_sum/(CamPose.size()-1));
+        } else{
+            t_sum = t_sum/(CamPose.size()-1);
+            r_sum = r_sum/(CamPose.size()-1);
+        }
+
+        cout << "average error(Camera):" << " t: " << t_sum << " R: " << r_sum << endl;
+
+        vector<float> each_obj_t(max_id-1, 0);
+        vector<float> each_obj_r(max_id-1, 0);
+        vector<float> each_obj_count(max_id-1, 0);
+
+        //all motion error for OBJECTS(mean error)
+        cout << "OBJECTS: " << endl;
+        float r_rpe_sum = 0, t_rpe_sum = 0, obj_count = 0;
+        for(int i=0; i<RigMot.size(); ++i)
+        {
+            if(RigMot[i].size()>1)
+            {
+                for(int j=1; j<RigMot[i].size(); ++j)
+                {
+                    if(!ObjStat[i][j])
+                    {
+                        cout << "(" << mpMap->vnRMLabel[i][j] << ")" << " is a failure case." << endl;
+                        continue;
+                    }
+
+                    cv::Mat RigMotBody = Converter::toInvMatrix(ObjPosePre[i][j])*RigMot[i][j]*ObjPosePre[i][j];
+                    cv::Mat rpe_obj = Converter::toInvMatrix(RigMotBody) * RigMot_gt[i][j];
+
+                    //translation error
+                    float t_rpe_obj = sqrt(pow(rpe_obj.at<float>(0, 3), 2)+ pow(rpe_obj.at<float>(1, 3), 2)+pow(rpe_obj.at<float>(2, 3), 2));
+                    if(bRMSError)
+                    {
+                        each_obj_t[mpMap->vnRMLabel[i][j]-1] = each_obj_t[mpMap->vnRMLabel[i][j]-1] + t_rpe_obj;
+                        t_rpe_sum = t_rpe_sum + t_rpe_obj;
+                    }
+                    else{
+                        each_obj_t[mpMap->vnRMLabel[i][j]-1] = each_obj_t[mpMap->vnRMLabel[i][j]-1] + t_rpe_obj;
+                        t_rpe_sum = t_rpe_sum + t_rpe_obj;
+                    }
+
+                    //rotation error
+                    float trace_rpe = 0;
+                    for(int k=0; k<3; ++k)
+                    {
+                        if(rpe_obj.at<float>(k, k)>1.0)
+                            trace_rpe = trace_rpe+1.0 -(rpe_obj.at<float>(k, k)-1.0);
+                        else
+                            trace_rpe = trace_rpe + rpe_obj.at<float>(k, k);
+                    }
+                    float r_rpe_obj = acos((trace_rpe-1.0)/2.0)*180.0/CV_PI;
+                    if(bRMSError)
+                    {
+                        each_obj_r[mpMap->vnRMLabel[i][j]-1] = each_obj_r[mpMap->vnRMLabel[i][j]-1] + r_rpe_obj*r_rpe_obj;
+                        r_rpe_sum = r_rpe_sum + r_rpe_obj;
+                    }
+                    else{
+                        each_obj_r[mpMap->vnRMLabel[i][j]-1] = each_obj_r[mpMap->vnRMLabel[i][j]-1] + r_rpe_obj;
+                        r_rpe_sum = r_rpe_sum + r_rpe_obj;
+                    }
+
+                    obj_count ++;
+                    each_obj_count[mpMap->vnRMLabel[i][j]-1] = each_obj_count[mpMap->vnRMLabel[i][j]-1] + 1;
+                    if(bAccumError)
+                    {
+                        ObjTraErr[mpMap->vnRMLabel[i][j]-1].push_back(each_obj_t[mpMap->vnRMLabel[i][j]-1]/each_obj_count[mpMap->vnRMLabel[i][j]-1]);
+                        ObjRotErr[mpMap->vnRMLabel[i][j]-1].push_back(each_obj_r[mpMap->vnRMLabel[i][j]-1]/each_obj_count[mpMap->vnRMLabel[i][j]-1]);
+                    }
+                    else
+                    {
+                        ObjTraErr[mpMap->vnRMLabel[i][j]-1].push_back(t_rpe_obj);
+                        ObjRotErr[mpMap->vnRMLabel[i][j]-1].push_back(r_rpe_obj);
+                    }
+                }
+            }
+        }
+        if(bRMSError)
+        {
+            t_rpe_sum = sqrt(t_rpe_sum/obj_count);
+            r_rpe_sum = sqrt(r_rpe_sum/obj_count);
+        }
+        else
+        {
+            t_rpe_sum = t_rpe_sum/obj_count;
+            r_rpe_sum = r_rpe_sum/obj_count;
+        }
+
+        cout << "average error (Over All Objects):" << " t: " << t_rpe_sum << " R: " << r_rpe_sum << endl;
+
+        //show each object
+        for(int i=0; i<each_obj_count.size(); ++i)
+        {
+            if(bRMSError)
+            {
+                each_obj_t[i] = sqrt(each_obj_t[i]/each_obj_count[i]);
+                each_obj_r[i] = sqrt(each_obj_r[i]/each_obj_count[i]);
+            }
+            else
+            {
+                each_obj_t[i] = each_obj_t[i]/each_obj_count[i];
+                each_obj_r[i] = each_obj_r[i]/each_obj_count[i];
+            }
+            if(each_obj_count[i]>=3)
+                cout << endl << "average error of Object " << i+1 << ": " < " t: " << each_obj_t[i] << " R: " << each_obj_r[i] << endl;
+
+        }
+        cout << "============================================" << endl;
+
+        auto  name1 = "Translation";
+        cvplot::
     }
 }

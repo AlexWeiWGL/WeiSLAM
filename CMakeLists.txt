@@ -59,7 +59,7 @@ add_library(LIB ${srcFiles})
 
 add_subdirectory(Thirdparty/g2o)
 
-add_executable(${PROJECT_NAME} main.cc)
+add_executable(${PROJECT_NAME} main.cc include/cvplot/color.h include/cvplot/window.h)
 
 target_link_libraries(${PROJECT_NAME}    
     ${OpenCV_LIBS}
