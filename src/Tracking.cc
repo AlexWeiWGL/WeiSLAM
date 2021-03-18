@@ -4,7 +4,7 @@
 #include <opencv2/core/core.hpp>
 #include <opencv2/features2d/features2d.hpp>
 #include <opencv2/highgui/highgui.hpp>
-#include "../include/cvplot/cvplot.h"
+#include <cvplot/cvplot.h>
 
 #include "../include/Converter.h"
 #include "../include/Map.h"
@@ -2853,12 +2853,226 @@ namespace WeiSLAM{
                 each_obj_r[i] = each_obj_r[i]/each_obj_count[i];
             }
             if(each_obj_count[i]>=3)
-                cout << endl << "average error of Object " << i+1 << ": " < " t: " << each_obj_t[i] << " R: " << each_obj_r[i] << endl;
+                cout << endl << "average error of Object " << i+1 << ": " << " t: " << each_obj_t[i] << " R: " << each_obj_r[i] << endl;
 
         }
         cout << "============================================" << endl;
 
         auto  name1 = "Translation";
-        cvplot::
+        cvplot::setWindowTitle(name1, "Translation Error (Meter)");
+        cvplot::moveWindow(name1, 0, 240);
+        cvplot::resizeWindow(name1, 800, 240);
+        auto &figure1 = cvplot::figure(name1);
+
+        auto name2 = "Rotation";
+        cvplot::setWindowTitle(name2, "Rotation Error (Degree)");
+        cvplot::resizeWindow(name2, 800, 240);
+        auto &figure2 = cvplot::figure(name2);
+
+        figure1.series("Camera")
+            .setValue(CamTraErr)
+            .type(cvplot::DotLine)
+            .color(cvplot::Red);
+
+        figure2.series("Camera")
+            .setValue(CamPotErr)
+            .type(cvplot::DotLine)
+            .color(cvplot::Red);
+
+        for(int i=0; i<max_id-1; ++i)
+        {
+            switch (i) {
+                case 0:
+                    figure1.series("Object "+std::to_string(i+1))
+                        .setValue(ObjTraErr[i])
+                        .type(cvplot::DotLine)
+                        .color(cvplot::Purple);
+                    figure2.series("Object " + std::to_string(i+1))
+                        .setValue(ObjRotErr[i])
+                        .type(cvplot::DotLine)
+                        .color(cvplot::Purple);
+                    break;
+                case 1:
+                    figure1.series("Object "+std::to_string(i+1))
+                        .setValue(ObjTraErr[i])
+                        .type(cvplot::DotLine)
+                        .color(cvplot::Green);
+                    figure2.series("Object "+std::to_string(i+1))
+                        .setValue(ObjRotErr[i])
+                        .type(cvplot::DotLine)
+                        .color(cvplot::Green);
+                    break;
+                case 2:
+                    figure1.series("Object "+std::to_string(i+1))
+                        .setValue(ObjTraErr[i])
+                        .type(cvplot::DotLine)
+                        .color(cvplot::Cyan);
+                    figure2.series("Object " + std::to_string(i+1))
+                        .setValue(ObjRotErr[i])
+                        .type(cvplot::DotLine)
+                        .color(cvplot::Cyan);
+                    break;
+                case 3:
+                    figure1.series("Object " + std::to_string(i + 1))
+                        .setValue(ObjTraErr[i])
+                        .type(cvplot::DotLine)
+                        .color(cvplot::Blue);
+                    figure2.series("Object " + std::to_string(i+1))
+                        .setValue(ObjRotErr[i])
+                        .type(cvplot::DotLine)
+                        .color(cvplot::Blue);
+                    break;
+                case 4:
+                    figure1.series("Object " + std::to_string((i+1)))
+                        .setValue(ObjTraErr[i])
+                        .type(cvplot::DotLine)
+                        .color(cvplot::Pink);
+                    figure2.series("Object" + std::to_string(i+1))
+                        .setValue(ObjRotErr[i])
+                        .type(cvplot::DotLine)
+                        .color(cvplot::Pink);
+                    break;
+            }
+        }
+
+        figure1.show(true);
+        figure2.show(true);
+    }
+
+    void Tracking::GetVelocityError(const vector<vector<cv::Mat>> &RigMot, const vector<vector<cv::Mat>> &PointDyn,
+                                    const vector<vector<int>> &FeaLab, const vector<vector<int>> &RMLab,
+                                    const vector<vector<float>> &Velo_gt, const vector<vector<int>> &TmpMatch,
+                                    const vector<vector<bool>> &ObjStat) {
+        bool bRMSError = true;
+        float s_sum = 0, s_gt_sum = 0, obj_count = 0;
+
+        string path = "/Users/alexwei/Evaluation/ijrr2021/";
+        string path_sp_e = path + "speed_error.txt";
+        string path_sp_est = path + "speed_estimation.txt";
+        string path_sp_gt = path + "speed_groundtruth.txt";
+        string path_track = path + "tracking_id.txt";
+        ofstream save_sp_e, save_sp_est, save_sp_gt, save_tra;
+        save_sp_e.open(path_sp_e.c_str(), ios::trunc);
+        save_sp_est.open(path_sp_est.c_str(), ios::trunc);
+        save_sp_gt.open(path_sp_gt.c_str(), ios::trunc);
+        save_tra.open(path_track.c_str(), ios::trunc);
+
+        vector<float> each_obj_est(max_id-1, 0);
+        vector<float> each_obj_gt(max_id-1, 0);
+        vector<float> each_obj_count(max_id-1, 0);
+
+        cout << "OBJECTS SPEED:" << endl;
+
+        for(int i=0; i<RigMot.size(); ++i)
+        {
+            save_tra  << i << " " << 0 << " ";
+
+            //check if there are moving onjects, and if all the variables are consistent
+            if(RigMot[i].size()>1 && Velo_gt[i].size()>1 &&RMLab[i].size()>1)
+            {
+                //loop for each object in each frame
+                for(int j=1; i<RigMot[i].size(); ++j)
+                {
+                    // check if this is valid object estimate
+                    if(!ObjStat[i][j]) {
+                        cout << "(" << mpMap->vnRMLabel[i][j] << ")" << " is a failure case" << endl;
+                        continue;
+                    }
+
+                    //compute each object centroid
+                    cv::Mat ObjCenter = (cv::Mat_<float>(3, 1)  << 0.f, 0.f, 0.f);
+                    float ObjFeaCount = 0;
+                    if(i==0)
+                    {
+                        for(int k=0; k<PointDyn[i+1].size(); ++k)
+                        {
+                            if(FeaLab[i][k]!=RMLab[i][j])
+                                continue;
+                            if(TmpMatch[i][k] == -1)
+                                continue;
+
+                            ObjCenter = ObjCenter + PointDyn[i][TmpMatch[i][k]];
+                            ObjFeaCount = ObjFeaCount + 1;
+                        }
+                        ObjCenter = ObjCenter/ObjFeaCount;
+                    }
+                    else
+                    {
+                        for(int k=0; i<PointDyn[i+1].size(); ++k)
+                        {
+                            if(FeaLab[i][k] != RMLab[i][j])
+                                continue;
+                            if(TmpMatch[i][k]== -1)
+                                continue;
+                            ObjCenter = ObjCenter + PointDyn[i][TmpMatch[i][k]];
+                            ObjFeaCount = ObjFeaCount + 1;
+                        }
+                        ObjCenter = ObjCenter/ObjFeaCount;
+                    }
+
+                    //compute object velocity
+                    cv::Mat sp_est_v = RigMot[i][j].rowRange(0, 3).col(3) - (cv::Mat::eye(3, 3, CV_32F)-RigMot[i][j].rowRange(0, 3))*ObjCenter;
+                    float sp_est_norm = sqrt(pow(sp_est_v.at<float>(0), 2) + pow(sp_est_v.at<float>(1), 2) + pow(sp_est_v.at<float>(2), 2)) *36;
+
+                    //compute velocity error
+                    float speed_error = sp_est_norm - Velo_gt[i][j];
+                    if(bRMSError)
+                    {
+                        each_obj_est[mpMap->vnRMLabel[i][j]-1] = each_obj_est[mpMap->vnRMLabel[i][j]-1] + sp_est_norm*sp_est_norm;
+                        each_obj_gt[mpMap->vnRMLabel[i][j] - 1] = each_obj_gt[mpMap->vnRMLabel[i][j]-1] + Velo_gt[i][j]*Velo_gt[i][j];
+                        s_sum = s_sum + speed_error;
+                    }
+                    else{
+                        each_obj_est[mpMap->vnRMLabel[i][j] - 1] = each_obj_est[mpMap->vnRMLabel[i][j]-1] + sp_est_norm;
+                        each_obj_gt[mpMap->vnRMLabel[i][j]-1] = each_obj_gt[mpMap->vnRMLabel[i][j] -1] + Velo_gt[i][j];
+                        s_sum = s_sum + speed_error*speed_error;
+                    }
+
+                    // sum ground truth speed
+                    s_gt_sum = s_gt_sum + Velo_gt[i][j];
+
+                    save_sp_e << fixed << setprecision(6) << speed_error << endl;
+                    save_sp_est << fixed << setprecision(6) << sp_est_norm << endl;
+                    save_sp_gt << fixed << setprecision(6) << Velo_gt[i][j] << endl;
+                    save_tra << mpMap->vnRMLabel[i][j] << " ";
+
+                    obj_count = obj_count + 1;
+                    each_obj_count[mpMap->vnRMLabel[i][j]-1] = each_obj_count[mpMap->vnRMLabel[i][j]-1] + 1;
+
+                }
+                save_tra << endl;
+
+            }
+        }
+
+        save_sp_e.close();
+        save_sp_est.close();
+        save_sp_gt.close();
+
+        if(bRMSError)
+            s_sum = sqrt(s_sum/obj_count);
+        else
+            s_sum = abs(s_sum/obj_count);
+
+        s_gt_sum = s_gt_sum / obj_count;
+
+        cout << "average speed error : " << " s: " << s_sum << "km/h" << "Track Num: " << (int)obj_count << "GT AVG SPEED: " << s_gt_sum << endl;
+
+        for(int i=0; i<each_obj_count.size(); ++i)
+        {
+            if(bRMSError)
+            {
+                each_obj_est[i] = sqrt(each_obj_est[i]/each_obj_count[i]);
+                each_obj_gt[i] = sqrt(each_obj_gt[i]/each_obj_count[i]);
+            }
+            else{
+                each_obj_est[i] = each_obj_est[i]/each_obj_count[i];
+                each_obj_gt[i] = each_obj_gt[i]/each_obj_count[i];
+            }
+            if(mpMap->nObjTraCount[i] >= 3)
+                cout << endl << "average error of Object " << i+1 << " (" << mpMap->nObjTraCount[i] << "/" << mpMap->nObjTraCountGT[i] << "/" << mpMap->nObjTraSemLab[i] << "): " << " (gt) " << each_obj_gt[i] << endl;
+        }
+
+        cout << "=====================================================" << endl << endl;
     }
 }

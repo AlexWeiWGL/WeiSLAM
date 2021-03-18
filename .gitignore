@@ -37,3 +37,4 @@ build/
 .history/
 Thirdparty/
 cmake-build-debug/
+.idea/
