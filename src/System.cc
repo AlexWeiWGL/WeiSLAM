@@ -33,6 +33,15 @@ namespace WeiSLAM{
         return Tcw;
     }
 
+    cv::Mat System::TrackMonocular(const cv::Mat &im, const double &timestamp, string filename) {
+        if(mSensor!=MONOCULAR)
+        {
+            cerr << "ERROR: you called TrackMonocular but input sensor was not set to Monocular !!!"<< endl;
+            exit(-1);
+        }
+
+    }
+
     void System::SaveResultsIJRR2021(const string &filename)
     {
         cout << endl << "Saving Result into TXT File ..." << endl;

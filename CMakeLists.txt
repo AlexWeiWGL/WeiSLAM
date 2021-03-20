@@ -55,11 +55,11 @@ ${Pangolin_INCLUDE_DIRS}
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/lib)
 
 aux_source_directory(src/ srcFiles)
-add_library(LIB ${srcFiles})
+add_library(LIB ${srcFiles} src/TwoViewReconstruction.cc)
 
 add_subdirectory(Thirdparty/g2o)
 
-add_executable(${PROJECT_NAME} main.cc include/cvplot/color.h include/cvplot/window.h include/cvplot/highgui.h include/cvplot/figure.h)
+add_executable(${PROJECT_NAME} main.cc include/TwoViewReconstruction.h)
 
 target_link_libraries(${PROJECT_NAME}    
     ${OpenCV_LIBS}

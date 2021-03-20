@@ -47,6 +47,8 @@ namespace WeiSLAM{
                                  const cv::Mat &mTcw_gt, const vector<vector<float>> &vObjPose_gt, const double &timestamp,
                                  cv::Mat &imTraj, const int &nImage);
 
+            cv::Mat GrabImageMonocular(const cv::Mat &im, const double &timestamp, string filebame);
+
             void GetSceneFlowObj();
 
             vector<vector<int>> DynObjTracking();

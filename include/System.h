@@ -30,6 +30,8 @@ namespace WeiSLAM{
             
             void SaveResultsIJRR2021(const string & filename);
 
+
+            cv::Mat TrackMonocular(const cv::Mat &im, const double &timestamp, string filename="");
         private:
             eSensor mSensor;
 

@@ -175,6 +175,8 @@ namespace WeiSLAM{
             Frame(const cv::Mat &imGray, const cv::Mat &imDepth, const cv::Mat &imFlow, const cv::Mat &maskSEM, const double &timeStamp, ORBextractor* extractor,
                   cv::Mat &K, cv::Mat &distCoef, const float &bf, const float &thDepth, const float &theDepthObj, const int &UseSampleFea);
 
+            Frame(const cv::Mat &im, const cv::Mat &imFlow, const cv::Mat &maskSEM, const double &timeStamp, ORBextractor* extractor,
+                  cv::Mat &K, cv::Mat &distCoef, const float &bf, const float mThDepth);
             void ExtractORB(int flag, const cv::Mat &im);
             void SetPose(cv::Mat Tcw);
 

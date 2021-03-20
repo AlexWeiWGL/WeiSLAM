@@ -9,7 +9,7 @@
 namespace cvplot{
     struct Color{
         uint8_t  r, g, b, a;
-        Color(uint8_t r, uint8_t b, uint8_t a = 255):r(r), g(g), b(b), a(a){}
+        Color(uint8_t r, uint8_t g, uint8_t b, uint8_t a = 255):r(r), g(g), b(b), a(a){}
         Color(const uint8_t *rgb, uint8_t a = 255) : Color(rgb[0], rgb[1], rgb[2], a){}
         Color():Color(0, 0, 0){}
 
@@ -28,7 +28,7 @@ namespace cvplot{
     };
 
     static const Color Red = Color::hue(0.f);
-    static const Color Orange = Color:hue(.5f);
+    static const Color Orange = Color::hue(.5f);
     static const Color Yellow = Color::hue(1.f);
     static const Color Lawn = Color::hue(1.5f);
     static const Color Green = Color::hue(2.f);
