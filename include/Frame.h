@@ -198,7 +198,7 @@ namespace WeiSLAM{
             void ComputeStereoFromRGBD(const cv::Mat &imgDepth);
 
             cv::Mat UnprojectStereo(const int &i);
-            cv::Mat UnprojectStereoStat(const int &i, const bool &addnoise);
+            cv::Mat UnprojectMono(const int &i, const bool &addnoise);
             cv::Mat UnprojectStereoObject(const int &i, const bool &addnoise);
             cv::Mat UnprojectStereoObjectCamera(const int &i, const bool &addnoise);
             cv::Mat UnprojectStereoObjectNoise(const int &i, const bool &addnoise);

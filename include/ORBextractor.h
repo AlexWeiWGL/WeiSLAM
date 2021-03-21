@@ -43,6 +43,10 @@ namespace WeiSLAM{
                 return mvScaleFactor;
             }
 
+            std::vector<float> inline GetInverseScaleFactors(){
+                return mvInvScaleFactor;
+            }
+
             std::vector<float> inline GetScaleSigmaSquares(){
                 return mvLevelSigma2;
             }

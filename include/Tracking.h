@@ -9,6 +9,7 @@
 #include "Map.h"
 #include "Frame.h"
 #include "ORBextractor.h"
+#include "TwoViewReconstruction.h"
 #include "System.h"
 
 #include <mutex>

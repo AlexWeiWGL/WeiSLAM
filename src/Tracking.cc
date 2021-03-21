@@ -974,14 +974,15 @@ namespace WeiSLAM{
             vector<cv::Mat> mv3DPointTmp;
             for(int i=0; i<currentFrame.mvStatKeysTmp.size(); ++i)
             {
-                mv3DPointTmp.push_back(Optimizer::Get3DinCamera(currentFrame.mvStatKeysTmp[i], currentFrame.mvStatDepthTmp[i], mK));
+
+                mv3DPointTmp.push_back(Optimizer::Get3DinCamera(currentFrame.mvObjKeys[i], mLastFrame.mvObjKeys[i], mK));
             }
             currentFrame.mvStat3DPointTmp = mv3DPointTmp;
 
             vector<cv::Mat> mvObj3DPointTmp;
             for(int i=0; i<currentFrame.mvObjKeys.size(); ++i)
             {
-                mvObj3DPointTmp.push_back(Optimizer::Get3DinCamera(currentFrame.mvObjKeys[i], currentFrame.mvObjDepth[i], mK));
+                mvObj3DPointTmp.push_back(Optimizer::Get3DinCamera(currentFrame.mvObjKeys[i], mLastFrame.mvObjKeys[i], mK));
             }
             currentFrame.mvObj3DPoint = mv3DPointTmp;
 
@@ -1283,7 +1284,7 @@ namespace WeiSLAM{
             tmp_2d.y = currentFrame.mvStatKeys[MatchId[i]].pt.y;
             cur_2d[i] = tmp_2d;
             cv::Point3f tmp_3d;
-            cv::Mat x3D_p = mLastFrame.UnprojectStereoStat(MatchId[i], 0);
+            cv::Mat x3D_p = mLastFrame.UnprojectMono(MatchId[i], 0);
             tmp_3d.x = x3D_p.at<float>(0);
             tmp_3d.y = x3D_p.at<float>(1);
             tmp_3d.z = x3D_p.at<float>(2);

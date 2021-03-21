@@ -55,11 +55,11 @@ ${Pangolin_INCLUDE_DIRS}
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/lib)
 
 aux_source_directory(src/ srcFiles)
-add_library(LIB ${srcFiles} src/TwoViewReconstruction.cc)
+add_library(LIB ${srcFiles} src/TwoViewReconstruction.cc src/Frame.cc)
 
 add_subdirectory(Thirdparty/g2o)
 
-add_executable(${PROJECT_NAME} main.cc include/TwoViewReconstruction.h)
+add_executable(${PROJECT_NAME} main.cc include/TwoViewReconstruction.h include/Pinhole.h include/GeometricCamera.h)
 
 target_link_libraries(${PROJECT_NAME}    
     ${OpenCV_LIBS}

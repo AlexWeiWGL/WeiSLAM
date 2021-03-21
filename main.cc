@@ -12,7 +12,7 @@
 using namespace std;
 
 void LoadData(const string &strPathToSequence, vector<string> &vstrFilenamesSEM,
-              vector<string> &vstrFilenamesRGB, vector<string> &vstrFilenamesDEP, vector<string> &vstrFilenamesFLO,
+              vector<string> &vstrFilenamesRGB, vector<string> &vstrFilenamesFLO,
               vector<double> &vTimestamps, vector<cv::Mat> &vPoseGT, vector<vector<float>> &vObjPoseGT);
 
 void LoadMask(const string &strFilenamesMask, cv::Mat &imMask);
@@ -32,7 +32,7 @@ int main(int argc, char **argv){
     vector<vector<float>> vObjPoseGT;
     vector<double> vTimestamps;
 
-    LoadData(argv[2], vstrFilenamesSEM, vstrFilenamesRGB, vstrFilenamesDEP, vstrFilenamesFLO,
+    LoadData(argv[2], vstrFilenamesSEM, vstrFilenamesRGB, vstrFilenamesFLO,
                 vTimestamps, vPoseGT, vObjPoseGT);
     
     vector<vector<int>> vObjPoseID(vstrFilenamesRGB.size());
@@ -59,7 +59,7 @@ int main(int argc, char **argv){
         return 1;
     }
 
-    WeiSLAM::System SLAM(argv[1], WeiSLAM::System::RGBD);
+    WeiSLAM::System SLAM(argv[1], WeiSLAM::System::MONOCULAR);
 
     cout << endl << "------------------------------------------------------------------"<<endl;
     cout << "Start processing sequence ..." << endl;
@@ -74,7 +74,6 @@ int main(int argc, char **argv){
         cout << "Processing Frame: " << ni << endl;
 
         imRGB = cv::imread(vstrFilenamesRGB[ni], CV_LOAD_IMAGE_UNCHANGED);
-        imD = cv::imread(vstrFilenamesDEP[ni], CV_LOAD_IMAGE_UNCHANGED);
         cv::Mat imD_f, imD_r;
 
         imD.convertTo(imD_f, CV_32F);
@@ -104,7 +103,7 @@ int main(int argc, char **argv){
 }
 
 void LoadData(const string &strPathToSequence, vector<string> &vstrFilenameSEM,
-              vector<string> &vstrFilenamesRGB, vector<string> &vstrFilenamesDEP, vector<string> &vstrFilenamesFLO,
+              vector<string> &vstrFilenamesRGB, vector<string> &vstrFilenamesFLO,
               vector<double> &vTimestamps, vector<cv::Mat> &vPoseGT, vector<vector<float>> &vObjPoseGT)
 {
     ifstream fTimes;
@@ -130,7 +129,6 @@ void LoadData(const string &strPathToSequence, vector<string> &vstrFilenameSEM,
 
     const int nTimes = vTimestamps.size();
     vstrFilenamesRGB.resize(nTimes);
-    vstrFilenamesDEP.resize(nTimes);
     vstrFilenameSEM.resize(nTimes);
     vstrFilenamesFLO.resize(nTimes);
 
@@ -138,7 +136,6 @@ void LoadData(const string &strPathToSequence, vector<string> &vstrFilenameSEM,
         stringstream ss;
         ss << setfill('0') << setw(6) << i;
         vstrFilenamesRGB[i] = strPrefixImage + ss.str() + ".png";
-        vstrFilenamesDEP[i] = strPrefixDepth + ss.str() + ".png";
         vstrFilenameSEM[i] = strPrefixSemantic + ss.str() + ".txt";
         vstrFilenamesFLO[i] = strPrefixFlow + ss.str() + ".flo";
     }
