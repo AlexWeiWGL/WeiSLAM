@@ -14,7 +14,7 @@ namespace WeiSLAM{
             //static features and depths detected in image plane
             vector<vector<cv::KeyPoint>> vpFeatSta;
             vector<vector<float>> vfDepSta;
-            vector<vector<cv::Mat>> vp3DPointSta;
+            vector<vector<cv::Point3f>> vp3DPointSta;
 
             //index of temporal matching
             vector<vector<int>> vnAssoSta;
@@ -25,7 +25,7 @@ namespace WeiSLAM{
             //dynamic feature correspondences and depths detected in image plane
             vector<vector<cv::KeyPoint>> vpFeatDyn;
             vector<vector<float>> vfDepDyn;
-            vector<vector<cv::Mat>> vp3DPointDyn;
+            vector<vector<cv::Point3f>> vp3DPointDyn;
             //index of temporal matching
             vector<vector<int>> vnAssoDyn;
             //label indicating which objec the feature belongs to

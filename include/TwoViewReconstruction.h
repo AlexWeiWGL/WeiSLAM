@@ -1,6 +1,3 @@
-//
-// Created by alexwei on 2021/3/20.
-//
 
 #ifndef WEISLAM_TWOVIEWRECONSTRUCTION_H
 #define WEISLAM_TWOVIEWRECONSTRUCTION_H
@@ -18,7 +15,7 @@ namespace WeiSLAM{
         //compute in parallel a fundamental matrix and a homography
         //select a model and tries to recover the motion and the structure from motion
         bool Reconstruct(const std::vector<cv::KeyPoint> &vKeys1, const std::vector<cv::KeyPoint> &vKeys2,
-                         const std::vector<int> &vMatches12, cv::Mat &r21, cv::Mat &t21, std::vector<cv::Point3f> &vP3D, std::vector<bool> &vbTraiangulated);
+                         const std::vector<int> &vMatches12, cv::Mat r21, cv::Mat t21, std::vector<cv::Point3f> &vP3D, std::vector<bool> &vbTraiangulated);
     private:
         void FindHomography(std::vector<bool> &vbMatchesInliers, float &score, cv::Mat &H21);
         void FindFundamental(std::vector<bool> &vbInliers, float &score, cv::Mat &f21);

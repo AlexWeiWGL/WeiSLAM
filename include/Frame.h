@@ -61,7 +61,7 @@ namespace WeiSLAM{
             //store dense key points and depth on objects
             vector<cv::KeyPoint> mvObjKeys;
             vector<float> mvObjDepth;
-            vector<cv::Mat> mvObj3DPoint;
+            vector<cv::Point3f> mvObj3DPoint;
 
             //correnspondence for the objects
             vector<cv::KeyPoint> mvObjCorres;
@@ -105,7 +105,7 @@ namespace WeiSLAM{
             //temoral saved
             vector<float> mvStatDepthTmp;
             vector<cv::KeyPoint> mvStatKeysTmp;
-            vector<cv::Mat> mvStat3DPointTmp;
+            vector<cv::Point3f> mvStat3DPointTmp;
             vector<int> vSemLabelTmp;
             vector<int> vObjLabel_gtTmp;
             int N_s_tmp;
@@ -154,6 +154,9 @@ namespace WeiSLAM{
 
             static bool initialComputations;
 
+            vector<cv::Point3f> obj3DTmp;
+            vector<cv::Point3f> v3DTmp;
+
         private:
             void UndistortKeyPoints();
 
@@ -172,7 +175,7 @@ namespace WeiSLAM{
             Frame();
 
             Frame(const Frame & frame);
-            Frame(const cv::Mat &imGray, const cv::Mat &imDepth, const cv::Mat &imFlow, const cv::Mat &maskSEM, const double &timeStamp, ORBextractor* extractor,
+            Frame(const cv::Mat &imGray, const cv::Mat &imFlow, const cv::Mat &maskSEM, const double &timeStamp, ORBextractor* extractor,
                   cv::Mat &K, cv::Mat &distCoef, const float &bf, const float &thDepth, const float &theDepthObj, const int &UseSampleFea);
 
             Frame(const cv::Mat &im, const cv::Mat &imFlow, const cv::Mat &maskSEM, const double &timeStamp, ORBextractor* extractor,
@@ -198,7 +201,8 @@ namespace WeiSLAM{
             void ComputeStereoFromRGBD(const cv::Mat &imgDepth);
 
             cv::Mat UnprojectStereo(const int &i);
-            cv::Mat UnprojectMono(const int &i, const bool &addnoise);
+            cv::Mat UnprojectStereoStat(const int &i, const bool &addnoise);
+            cv::Mat UnprojectMono(const cv::KeyPoint &vKey1, const cv::KeyPoint &vKey2, const bool &addnoise);
             cv::Mat UnprojectStereoObject(const int &i, const bool &addnoise);
             cv::Mat UnprojectStereoObjectCamera(const int &i, const bool &addnoise);
             cv::Mat UnprojectStereoObjectNoise(const int &i, const bool &addnoise);

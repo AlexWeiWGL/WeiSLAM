@@ -15,7 +15,7 @@ namespace WeiSLAM{
 
     bool TwoViewReconstruction::Reconstruct(const std::vector<cv::KeyPoint> &vKeys1,
                                             const std::vector<cv::KeyPoint> &vKeys2,
-                                            const std::vector<int> &vMatches12, cv::Mat &r21, cv::Mat &t21,
+                                            const std::vector<int> &vMatches12, cv::Mat r21, cv::Mat t21,
                                             std::vector<cv::Point3f> &vP3D, std::vector<bool> &vbTraiangulated) {
         mvKeys1.clear();
         mvKeys2.clear();

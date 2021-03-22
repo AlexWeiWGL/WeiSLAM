@@ -44,11 +44,9 @@ namespace WeiSLAM{
         public:
             Tracking(System* pSys, Map *map, const string &strSettingPath, const int sensor);
 
-            cv::Mat GrabImageRGB(const cv::Mat &imRGB, cv::Mat &imD, const cv::Mat &imFlow, const cv::Mat &maskSEM,
+            cv::Mat GrabImageMono(const cv::Mat &imRGB, const cv::Mat &imFlow, const cv::Mat &maskSEM,
                                  const cv::Mat &mTcw_gt, const vector<vector<float>> &vObjPose_gt, const double &timestamp,
                                  cv::Mat &imTraj, const int &nImage);
-
-            cv::Mat GrabImageMonocular(const cv::Mat &im, const double &timestamp, string filebame);
 
             void GetSceneFlowObj();
 
@@ -170,6 +168,13 @@ namespace WeiSLAM{
             //use sampled feature or detected feature for background
             int nUseSampleFea;
 
+            vector<int> matches12Sta;
+            vector<int> matches12Dyn;
+            vector<cv::Point3f> v3DTmp;
+            vector<bool> vbTriangulatedTmp;
+            cv::Mat RTmp;
+            cv::Mat tTmp;
+
         protected:
             void Track();
 
@@ -180,6 +185,8 @@ namespace WeiSLAM{
             System* mpSystem;
 
             Map* mpMap;
+
+            TwoViewReconstruction *reconstruction;
 
             cv::Mat mK;
             cv::Mat mDistCoef;
