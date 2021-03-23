@@ -92,7 +92,6 @@ namespace WeiSLAM {
                         mvFlowNext.push_back(cv::Point2f(flow_xe, flow_ye));
                     }
                 }
-
             }
         } else {
             //use sampled features
@@ -264,6 +263,17 @@ namespace WeiSLAM {
         return vIndices;
     }
 
+    bool Frame::PosInGrid(const cv::KeyPoint &kp, int &posX, int &posY) {
+        posX = round((kp.pt.x-minX)*mfGridElementWidthInv);
+        posY = round((kp.pt.y-minY)*mfGridElementHeightInv);
+
+        //keypoint's coordinates are undistorted, which could cause to go out of the image
+        if(posX<0 || posY>=FRAME_GRID_COLS || posY<0 || posY>=FRAME_GRID_ROWS)
+            return false;
+
+        return true;
+    }
+
     void Frame::UndistortKeyPoints() {
         if (distCoef.at<float>(0) == 0.0) {
             mvKeysUh = mvKeys;
@@ -319,6 +329,42 @@ namespace WeiSLAM {
             maxX = imLeft.cols;
             minY = 0.0f;
             maxy = imLeft.rows;
+        }
+    }
+
+    cv::Mat Frame::UnprojectStereoObject(const int &i, const bool &addnoise)
+    {
+        float z = v3DTmp[i].z;
+
+        // used for adding noise
+        cv::RNG rng((unsigned)time(NULL));
+
+        if(addnoise){
+            float noise = rng.gaussian(z*z/(725*0.5)*0.15);
+            z = z + noise;  // sigma = z*0.01
+            // z = z + 0.0;
+            // cout << "noise: " << noise << endl;
+        }
+
+        if(z>0)
+        {
+            const float u = mvObjKeys[i].pt.x;
+            const float v = mvObjKeys[i].pt.y;
+            const float x = (u-cx)*z*invfx;
+            const float y = (v-cy)*z*invfy;
+            cv::Mat x3Dc = (cv::Mat_<float>(3,1) << x, y, z);
+
+            // using ground truth
+            const cv::Mat Rlw = camPose.rowRange(0,3).colRange(0,3);
+            const cv::Mat Rwl = Rlw.t();
+            const cv::Mat tlw = camPose.rowRange(0,3).col(3);
+            const cv::Mat twl = -Rlw.t()*tlw;
+
+            return Rwl*x3Dc+twl;
+        }
+        else{
+            cout << "found a depth value < 0 ..." << endl;
+            return cv::Mat();
         }
     }
 

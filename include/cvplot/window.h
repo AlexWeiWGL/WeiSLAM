@@ -1,30 +1,27 @@
-//
-// Created by alexwei on 2021/3/18.
-//
-
-#ifndef WEISLAM_WINDOW_H
-#define WEISLAM_WINDOW_H
+#ifndef CVPLOT_WINDOW_H
+#define CVPLOT_WINDOW_H
 
 #include "color.h"
+
 #include <map>
 #include <string>
 
-namespace cvplot{
-    struct Rect{
+namespace cvplot {
+
+    struct Rect {
         int x, y, width, height;
-        Rect(int x, int y, int width, int height):x(x), y(y), width(width), height(height){}
-
+        Rect(int x, int y, int width, int height)
+                : x(x), y(y), width(width), height(height) {}
     };
-    struct Size{
+
+    struct Size {
         int width, height;
-        Size(int width, int height):width(width), height(height){}
-
+        Size(int width, int height) : width(width), height(height) {}
     };
 
-    struct Offset{
+    struct Offset {
         int x, y;
-        Offset(int x, int y):x(x), y(y){}
-
+        Offset(int x, int y) : x(x), y(y) {}
     };
 
     typedef void (*MouseCallback)(int event, int x, int y, int flags, void *param);
@@ -32,20 +29,19 @@ namespace cvplot{
 
     class Window;
 
-    class View{
+    class View {
     public:
-        View(Window &window, const std::string &title="", Size size = {300, 300})
-            :window_(window),
-             title_(title),
-             rect_(0, 0, size.width, size.height),
-             frameless_(false),
-             background_color_(Black),
-             frame_color_(Green),
-             text_color_(Black),
-             mouse_callback_(NULL),
-             mouse_param_(NULL){}
-
-        View &resize(Rect rect);
+        View(Window &window, const std::string &title = "", Size size = {300, 300})
+                : window_(window),
+                  title_(title),
+                  rect_(0, 0, size.width, size.height),
+                  frameless_(false),
+                  background_color_(Black),
+                  frame_color_(Green),
+                  text_color_(Black),
+                  mouse_callback_(NULL),
+                  mouse_param_(NULL) {}
+                  View &resize(Rect rect);
         View &size(Size size);
         View &offset(Offset offset);
         View &autosize();
@@ -65,10 +61,10 @@ namespace cvplot{
 
         void drawRect(Rect rect, Color color);
         void drawFill(Color background = White);
-        void drawImage(const void *image, int alpha=255);
+        void drawImage(const void *image, int alpha = 255);
         void drawText(const std::string &text, Offset offset, Color color) const;
         void drawFrame(const std::string &title) const;
-        void *buffer(Rect rect);
+        void *buffer(Rect &rect);
         void finish();
         void flush();
         void hide(bool hidden = true);
@@ -82,26 +78,15 @@ namespace cvplot{
         Window &window_;
         Color background_color_;
         Color frame_color_;
-        MouseCallback  mouse_callback_;
+        Color text_color_;
+        MouseCallback mouse_callback_;
+        void *mouse_param_;
         bool hidden_;
     };
 
-    class Window{
-    protected:
-        Offset offset_;
-        void *buffer_;
-        std::string title_;
-        std::string name_;
-        std::map<std::string, View> views_;
-        bool dirty_;
-        float flush_time_;
-        float fps_;
-        bool hidden_;
-        bool show_cursor_;
-        Offset cursor_;
-
+    class Window {
     public:
-        Window(const std::string &title="");
+        Window(const std::string &title = "");
         Window &resize(Rect rect);
         Window &size(Size size);
         Window &offset(Offset offset);
@@ -114,21 +99,36 @@ namespace cvplot{
         View &view(const std::string &name, Size size = {300, 300});
         void dirty();
         void tick();
-        void hide(bool hidden= true);
-        void onmouse(int event, int x, int u, int flags);
+        void hide(bool hidden = true);
+        void onmouse(int event, int x, int y, int flags);
 
-        Window &operator=(const Window&) = delete;
+        Window &operator=(const Window &) = delete;
 
         static Window &current();
         static void current(Window &window);
         static Window &current(const std::string &title);
+
+    protected:
+        Offset offset_;
+        void *buffer_;
+        std::string title_;
+        std::string name_;
+        std::map<std::string, View> views_;
+        bool dirty_;
+        float flush_time_;
+        float fps_;
+        bool hidden_;
+        bool show_cursor_;
+        Offset cursor_;
     };
 
-    class Util{
+    class Util {
     public:
-        static void sleep(float seconds=0);
-        static char key(float timeout=0);
-        static std::string line(float timeout =0);
+        static void sleep(float seconds = 0);
+        static char key(float timeout = 0);
+        static std::string line(float timeout = 0);
     };
-}
-#endif //WEISLAM_WINDOW_
+
+}  // namespace cvplot
+
+#endif  // CVPLOT_WINDOW_H

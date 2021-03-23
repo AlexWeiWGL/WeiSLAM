@@ -28,18 +28,24 @@ namespace WeiSLAM{
             exit(-1);
         }
 
-        cv::Mat Tcw = tracker->GrabImageRGB(im, depthmap, flowmap, masksem, mTcw_gt, vObjPose_gt, timestamp, imTraj, nImage);
+        cv::Mat Tcw = tracker->GrabImageMono(im, flowmap, masksem, mTcw_gt, vObjPose_gt, timestamp, imTraj, nImage);
 
         return Tcw;
+
     }
 
-    cv::Mat System::TrackMonocular(const cv::Mat &im, const double &timestamp, string filename) {
-        if(mSensor!=MONOCULAR)
+    cv::Mat System::TrackMono(const cv::Mat &im, const cv::Mat &flowmap, const cv::Mat &maskSem, const cv::Mat mTcw_gt,
+                              const vector<vector<float>> &vObjectPose_gt, const double &timestamp, cv::Mat &imTraj,
+                              const int &nImage) {
+        if(mSensor != MONOCULAR)
         {
-            cerr << "ERROR: you called TrackMonocular but input sensor was not set to Monocular !!!"<< endl;
+            cerr << "ERROR: you called TrackMono but input sensor was not set to Monocular !!!" << endl;
             exit(-1);
         }
 
+        cv::Mat Tcw = tracker->GrabImageMono(im, flowmap, maskSem, mTcw_gt, vObjectPose_gt, timestamp, imTraj, nImage);
+
+        return Tcw;
     }
 
     void System::SaveResultsIJRR2021(const string &filename)

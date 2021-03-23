@@ -1,28 +1,30 @@
 #include "Optimizer.h"
 
-#include "Thirdparty/g2o/g2o/core/block_solver.h"
-#include "Thirdparty/g2o/g2o/core/optimization_algorithm_levenberg.h"
-#include "Thirdparty/g2o/g2o/core/optimization_algorithm_gauss_newton.h"
-#include "Thirdparty/g2o/g2o/core/optimization_algorithm_dogleg.h"
-#include "Thirdparty/g2o/g2o/solvers/linear_solver_eigen.h"
-#include "Thirdparty/g2o/g2o/types/types_six_dof_expmap.h"
-#include "Thirdparty/g2o/g2o/core/robust_kernel_impl.h"
-#include "Thirdparty/g2o/g2o/solvers/linear_solver_dense.h"
-#include "Thirdparty/g2o/g2o/types/types_seven_dof_expmap.h"
+#include "dependencies/g2o/g2o/core/block_solver.h"
+#include "dependencies/g2o/g2o/core/optimization_algorithm_levenberg.h"
+#include "dependencies/g2o/g2o/core/optimization_algorithm_gauss_newton.h"
+#include "dependencies/g2o/g2o/core/optimization_algorithm_dogleg.h"
+#include "dependencies/g2o/g2o/solvers/linear_solver_eigen.h"
+#include "dependencies/g2o/g2o/types/types_six_dof_expmap.h"
+#include "dependencies/g2o/g2o/core/robust_kernel_impl.h"
+#include "dependencies/g2o/g2o/solvers/linear_solver_dense.h"
+#include "dependencies/g2o/g2o/types/types_seven_dof_expmap.h"
 
-#include "Thirdparty/g2o/g2o/types/types_dyn_slam3d.h"
-#include "Thirdparty/g2o/g2o/types/vertex_se3.h"
-#include "Thirdparty/g2o/g2o/types/vertex_pointxyz.h"
-#include "Thirdparty/g2o/g2o/types/edge_se3.h"
-#include "Thirdparty/g2o/g2o/types/edge_se3_pointxyz.h"
-#include "Thirdparty/g2o/g2o/types/edge_se3_prior.h"
-#include "Thirdparty/g2o/g2o/types/edge_xyz_prior.h"
-#include "Thirdparty/g2o/g2o/core/sparse_optimizer_terminate_action.h"
-#include "Thirdparty/g2o/g2o/solvers/linear_solver_csparse.h"
+#include "dependencies/g2o/g2o/types/types_dyn_slam3d.h"
+#include "dependencies/g2o/g2o/types/vertex_se3.h"
+#include "dependencies/g2o/g2o/types/vertex_pointxyz.h"
+#include "dependencies/g2o/g2o/types/edge_se3.h"
+#include "dependencies/g2o/g2o/types/edge_se3_pointxyz.h"
+#include "dependencies/g2o/g2o/types/edge_se3_prior.h"
+#include "dependencies/g2o/g2o/types/edge_xyz_prior.h"
+#include "dependencies/g2o/g2o/core/sparse_optimizer_terminate_action.h"
+#include "dependencies/g2o/g2o/solvers/linear_solver_csparse.h"
 
-#include <Eigen/StdVector>
+#include<Eigen/StdVector>
+
 #include "Converter.h"
-#include <mutex>
+
+#include<mutex>
 
 namespace WeiSLAM{
     using namespace std;
@@ -276,7 +278,7 @@ namespace WeiSLAM{
                     //save <vertex_point_3d>
                     g2o::VertexPointXYZ *v_p = new g2o::VertexPointXYZ();
                     v_p->setId(count_unique_id);
-                    cv::Mat Xw = pMap->vp3DPointSta[i][j];
+                    cv::Mat Xw = Converter::toCvMat(pMap->vp3DPointSta[i][j]);
                     v_p->setEstimate(Converter::toVector3d(Xw));
                     optimizer.addVertex(v_p);
 
@@ -374,7 +376,7 @@ namespace WeiSLAM{
                         //save <vertex_point_3D>
                         g2o::VertexPointXYZ * v_p = new g2o::VertexPointXYZ();
                         v_p->setId(count_unique_id);
-                        cv::Mat Xw = pMap->vp3DPointDyn[i][j];
+                        cv::Mat Xw = Converter::toCvMat(pMap->vp3DPointDyn[i][j]);
                         v_p->setEstimate(Converter::toVector3d(Xw));
                         optimizer.addVertex(v_p);
                         //save <edge_3d>
@@ -506,14 +508,14 @@ namespace WeiSLAM{
                             // (3) save <VERTEX_POINT_3D>
                             g2o::VertexPointXYZ *v_p = new g2o::VertexPointXYZ();
                             v_p->setId(count_unique_id);
-                            cv::Mat Xw = pMap->vp3DPointDyn[i][j];
+                            cv::Mat Xw = Converter::toCvMat(pMap->vp3DPointDyn[i][j]);
                             v_p->setEstimate(Converter::toVector3d(Xw));
                             optimizer.addVertex(v_p);
                             // (4) save <EDGE_3D>
                             g2o::EdgeSE3PointXYZ * e = new g2o::EdgeSE3PointXYZ();
                             e->setVertex(0, optimizer.vertex(VertexID[i][0]));
                             e->setVertex(1, optimizer.vertex(count_unique_id));
-                            cv::Mat Xc = Optimizer::Get3DinCamera(pMap->vpFeatDyn[i][j],pMap->vfDepDyn[i][j],Calib_K);
+                            cv::Mat Xc = Optimizer::Get3DinCamera(pMap->vpFeatDyn[i][j],pMap->vfDepDyn[i][j],Calib_k);
                             e->setMeasurement(Converter::toVector3d(Xc));
                             e->information() = Eigen::Matrix3d::Identity()/sigma2_3d_dyn;
                             if (ROBUST_KERNEL)
@@ -542,7 +544,7 @@ namespace WeiSLAM{
                             // (3) save <VERTEX_POINT_3D>
                             g2o::VertexPointXYZ *v_p = new g2o::VertexPointXYZ();
                             v_p->setId(count_unique_id);
-                            cv::Mat Xw = pMap->vp3DPointDyn[i][j];
+                            cv::Mat Xw = Converter::toCvMat(pMap->vp3DPointDyn[i][j]);
                             v_p->setEstimate(Converter::toVector3d(Xw));
                             optimizer.addVertex(v_p);
                             // (4) save <EDGE_3D>
@@ -1076,7 +1078,7 @@ namespace WeiSLAM{
                     vPoint->getEstimateData(optimized);
                     Eigen::Matrix<double,3,1> tmp_3d;
                     tmp_3d << optimized[0],optimized[1],optimized[2];
-                    pMap->vp3DPointSta[i][j] = Converter::toCvMat(tmp_3d);
+                    pMap->vp3DPointSta[i][j] = Converter::toPoint3f(Converter::toCvMat(tmp_3d));
                 }
             }
         }
@@ -1096,7 +1098,7 @@ namespace WeiSLAM{
                         tmp_3d << optimized[0],optimized[1],optimized[2];
                         // cout << "dynamic before: " << pMap->vp3DPointDyn[i][j] << endl;
                         // cout << "dynamic after: " << tmp_3d << endl;
-                        pMap->vp3DPointDyn[i][j] = Converter::toCvMat(tmp_3d);
+                        pMap->vp3DPointDyn[i][j] = Converter::toPoint3f(Converter::toCvMat(tmp_3d));
                     }
                 }
             }
@@ -1372,7 +1374,7 @@ namespace WeiSLAM{
                     // (3) save <VERTEX_POINT_3D>
                     g2o::VertexPointXYZ *v_p = new g2o::VertexPointXYZ();
                     v_p->setId(count_unique_id);
-                    cv::Mat Xw = pMap->vp3DPointSta[i][j];
+                    cv::Mat Xw = Converter::toCvMat(pMap->vp3DPointSta[i][j]);
                     v_p->setEstimate(Converter::toVector3d(Xw));
                     optimizer.addVertex(v_p);
 
@@ -1432,7 +1434,7 @@ namespace WeiSLAM{
                         // (3) save <VERTEX_POINT_3D>
                         g2o::VertexPointXYZ *v_p = new g2o::VertexPointXYZ();
                         v_p->setId(count_unique_id);
-                        cv::Mat Xw = pMap->vp3DPointSta[i][j];
+                        cv::Mat Xw = Converter::toCvMat(pMap->vp3DPointSta[i][j]);
                         v_p->setEstimate(Converter::toVector3d(Xw));
                         // v_p->setFixed(true);
                         optimizer.addVertex(v_p);
@@ -1499,7 +1501,7 @@ namespace WeiSLAM{
                         // (3) save <VERTEX_POINT_3D>
                         g2o::VertexPointXYZ *v_p = new g2o::VertexPointXYZ();
                         v_p->setId(count_unique_id);
-                        cv::Mat Xw = pMap->vp3DPointDyn[i][j];
+                        cv::Mat Xw = Converter::toCvMat(pMap->vp3DPointDyn[i][j]);
                         v_p->setEstimate(Converter::toVector3d(Xw));
                         optimizer.addVertex(v_p);
                         // (4) save <EDGE_3D>
@@ -1633,7 +1635,7 @@ namespace WeiSLAM{
                             // (3) save <VERTEX_POINT_3D>
                             g2o::VertexPointXYZ *v_p = new g2o::VertexPointXYZ();
                             v_p->setId(count_unique_id);
-                            cv::Mat Xw = pMap->vp3DPointDyn[i][j];
+                            cv::Mat Xw = Converter::toCvMat(pMap->vp3DPointDyn[i][j]);
                             v_p->setEstimate(Converter::toVector3d(Xw));
                             optimizer.addVertex(v_p);
                             // (4) save <EDGE_3D>
@@ -1662,7 +1664,7 @@ namespace WeiSLAM{
                             // (3) save <VERTEX_POINT_3D>
                             g2o::VertexPointXYZ *v_p = new g2o::VertexPointXYZ();
                             v_p->setId(count_unique_id);
-                            cv::Mat Xw = pMap->vp3DPointDyn[i][j];
+                            cv::Mat Xw = Converter::toCvMat(pMap->vp3DPointDyn[i][j]);
                             v_p->setEstimate(Converter::toVector3d(Xw));
                             optimizer.addVertex(v_p);
                             // (4) save <EDGE_3D>
@@ -2106,7 +2108,7 @@ namespace WeiSLAM{
                     vPoint->getEstimateData(optimized);
                     Eigen::Matrix<double,3,1> tmp_3d;
                     tmp_3d << optimized[0],optimized[1],optimized[2];
-                    pMap->vp3DPointSta[i][j] = Converter::toCvMat(tmp_3d);
+                    pMap->vp3DPointSta[i][j] = Converter::toPoint3f(Converter::toCvMat(tmp_3d));
                 }
             }
         }
@@ -2124,12 +2126,11 @@ namespace WeiSLAM{
                         vPoint->getEstimateData(optimized);
                         Eigen::Matrix<double,3,1> tmp_3d;
                         tmp_3d << optimized[0],optimized[1],optimized[2];
-                        pMap->vp3DPointDyn[i][j] = Converter::toCvMat(tmp_3d);
+                        pMap->vp3DPointDyn[i][j] = Converter::toPoint3f(Converter::toCvMat(tmp_3d));
                     }
                 }
             }
         }
-
 
     }
 
@@ -2203,7 +2204,7 @@ namespace WeiSLAM{
                 e->cx = pCurFrame->cx;
                 e->cy = pCurFrame->cy;
 
-                //----------------------cv::Mat Xw = pLastFrame->UnprojectStereoStat(TemperalMatch[i],1);
+                cv::Mat Xw = pLastFrame->UnprojectStereoStat(TemperalMatch[i],1);
                 e->Xw[0] = Xw.at<float>(0);
                 e->Xw[1] = Xw.at<float>(1);
                 e->Xw[2] = Xw.at<float>(2);
@@ -2952,10 +2953,22 @@ namespace WeiSLAM{
         return mRwc*x3D+mtwc;
     }
 
-   cv::Mat Optimizer::Get3DinCamera(const cv::KeyPoint &vKey1, const cv::KeyPoint &vKey2, const cv::Mat &Calib_K) {
-        cv::Mat x3D = (cv::Mat_<float>(3, 1)<< 1.f, 1.f, 1.f);
+    cv::Mat Optimizer::Get3DinCamera(const cv::KeyPoint &Feats2d, const float &Dpts, const cv::Mat &Calib_K)
+    {
+        const float invfx = 1.0f/Calib_K.at<float>(0,0);
+        const float invfy = 1.0f/Calib_K.at<float>(1,1);
+        const float cx = Calib_K.at<float>(0,2);
+        const float cy = Calib_K.at<float>(1,2);
 
+        const float u = Feats2d.pt.x;
+        const float v = Feats2d.pt.y;
+
+        const float z = Dpts;
+        const float x = (u-cx)*z*invfx;
+        const float y = (v-cy)*z*invfy;
+
+        cv::Mat x3D = (cv::Mat_<float>(3,1) << x, y, z);
+
+        return x3D;
     }
-
-
 }

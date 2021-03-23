@@ -1,5 +1,6 @@
 #ifndef SYSTEM_H
-#define SYSYEM_H
+#define SYSTEM_H
+
 
 #include <string>
 #include <thread>
@@ -31,7 +32,9 @@ namespace WeiSLAM{
             void SaveResultsIJRR2021(const string & filename);
 
 
-            cv::Mat TrackMonocular(const cv::Mat &im, const double &timestamp, string filename="");
+            cv::Mat TrackMono(const cv::Mat &im, const cv::Mat &flowmap, const cv::Mat &maskSem, const cv::Mat mTcw_gt,
+                              const vector<vector<float>> &vObjectPose_gt, const double &timestamp, cv::Mat &imTraj,
+                              const int &nImage);
         private:
             eSensor mSensor;
 

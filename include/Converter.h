@@ -4,8 +4,8 @@
 #include <opencv2/core/core.hpp>
 #include <Eigen/Dense>
 
-#include "../Thirdparty/g2o/g2o/types/types_six_dof_expmap.h"
-#include "../Thirdparty/g2o/g2o/types/types_seven_dof_expmap.h"
+#include "dependencies/g2o/g2o/types/types_six_dof_expmap.h"
+#include "dependencies/g2o/g2o/types/types_seven_dof_expmap.h"
 
 namespace WeiSLAM{
     class Converter{
@@ -21,6 +21,9 @@ namespace WeiSLAM{
             static cv::Mat toCvMat(const Eigen::Matrix3d &m);
             static cv::Mat toCvMat(const Eigen::Matrix<double, 3, 1> &m);
             static cv::Mat toCvMat(const Eigen::MatrixXd &m);
+            static cv::Mat toCvMat(const cv::Point3f &point3F);
+
+            static cv::Point3f toPoint3f(const cv::Mat & cvMat);
 
             static cv::Mat toCvSE3(const Eigen::Matrix<double, 3, 3> &R, const Eigen::Matrix<double, 3, 1> &t);
             static cv::Mat tocvSkewMatrix(const cv::Mat &m);

@@ -565,7 +565,7 @@ namespace WeiSLAM{
             double cam_pos_time;
             s_1_1 = clock();
             //get initial estimate using p3p plus RanSac
-            reconstruction->Reconstruct(mLastFrame.mvKeys, currentFrame.mvKeys, TemeralMatch,RTmp, tTmp, v3DTmp, vbTriangulatedTmp);
+            reconstruction->Reconstruct(mLastFrame.mvStatKeys, currentFrame.mvStatKeys, TemeralMatch,RTmp, tTmp, v3DTmp, vbTriangulatedTmp);
             e_1_1 = clock();
 
             s_1_2 = clock();
@@ -1046,7 +1046,7 @@ namespace WeiSLAM{
             }
 
             //get the 3d flow
-            cv::Point3f x3D_p = mLastFrame.mvObj3DPoint[i];
+            cv::Point3f x3D_p = mLastFrame.mvObj3DPoint[i];  //考虑在这用重新用triangulate方法
             cv::Point3f x3D_c = currentFrame.mvObj3DPoint[i];
 
             pts_p3d[i] << x3D_p.x, x3D_p.y, x3D_p.z;
@@ -2288,7 +2288,7 @@ namespace WeiSLAM{
         }
 
         //create 3d point based on key point, depth and pose
-        vector<cv::KeyPoint> mv3DPointTmp(currentFrame.N_s_tmp);
+        vector<cv::Point3f> mv3DPointTmp(currentFrame.N_s_tmp);
         for(int i=0; i<currentFrame.N_s_tmp; ++i)
         {
             //mv3DPointTmp[i] = Optimizer::Get3DinWorld(mvKeysTmp[i], mvDepthTmp[i], mK, Converter::toInvMatrix(currentFrame.camPose));
@@ -2459,7 +2459,7 @@ namespace WeiSLAM{
        }
 
        //create 3d point based on key point, depth and pose
-       vector<cv::KeyPoint> mvObj3DPointTmp(mvObjKeysTmp.size());
+       vector<cv::Point3f> mvObj3DPointTmp(mvObjKeysTmp.size());
        for(int i=0; i<mvObjKeysTmp.size(); ++i)
        {
            //mvObj3DPointTmp[i] = Optimizer::Get3DinWorld(mvObjKeysTmp[i], mvObjDepthTmp[i], mK, Converter::toInvMatrix(currentFrame.camPose));

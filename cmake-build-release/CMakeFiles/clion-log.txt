@@ -1,0 +1,8 @@
+/snap/clion/145/bin/cmake/linux/bin/cmake -DCMAKE_BUILD_TYPE=Release -G "CodeBlocks - Unix Makefiles" /home/alexwei/CLionProjects/WeiSLAM
+Build type: Release
+-- Using flag -std=c++11.
+OPENCV VERSION:
+3.4.12
+-- Configuring done
+-- Generating done
+-- Build files have been written to: /home/alexwei/CLionProjects/WeiSLAM/cmake-build-release

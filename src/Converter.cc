@@ -76,6 +76,24 @@ namespace WeiSLAM{
         return cvMat.clone();
     }
 
+    cv::Mat Converter::toCvMat(const cv::Point3f &point3F) {
+        cv::Mat cvMat(3, 1, CV_32F);
+        cvMat.at<float>(0) = point3F.x;
+        cvMat.at<float>(1) = point3F.y;
+        cvMat.at<float>(2) = point3F.z;
+
+        return cvMat.clone();
+    }
+
+    cv::Point3f Converter::toPoint3f(const cv::Mat &cvMat) {
+        cv::Point3f point3F;
+        point3F.x = cvMat.at<float>(0);
+        point3F.y = cvMat.at<float>(1);
+        point3F.z = cvMat.at<float>(2);
+
+        return point3F;
+    }
+
     cv::Mat Converter::toCvSE3(const Eigen::Matrix<double, 3, 3> &R, const Eigen::Matrix<double, 3, 1> &t){
         cv::Mat cvMat = cv::Mat::eye(4, 4, CV_32F);
         for(int i=0; i<3; i++){

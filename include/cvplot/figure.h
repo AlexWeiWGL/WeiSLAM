@@ -103,9 +103,12 @@ namespace cvplot{
                     int uint, float offset) const;
         void verifyParams() const;
 
+        void bounds(float &x_min, float &x_max, float &y_min, float &y_max, int &n_max, int &p_max) const;
+
     protected:
         void ensureDimsDepth(int dims, int depth);
         bool flipAxis() const;
+
     };
 
     class Figure{

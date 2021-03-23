@@ -1,5 +1,5 @@
 #include "TwoViewReconstruction.h"
-#include "Thirdparty/DBoW2/DUtils/Random.h"
+#include "dependencies/DBoW2/DUtils/Random.h"
 #include <thread>
 
 using namespace std;
@@ -22,6 +22,7 @@ namespace WeiSLAM{
 
         mvKeys1 = vKeys1;
         mvKeys2 = vKeys2;
+        vP3D.clear();
 
         //fill structures with current keypoints and matches with reference frame
         //reference frame 1 , current frame 2

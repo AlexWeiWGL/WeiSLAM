@@ -43,34 +43,47 @@ MESSAGE(${OpenCV_VERSION})
 
 find_package(Eigen3 3.1.0 REQUIRED)
 find_package(Pangolin REQUIRED)
+find_package(CSparse REQUIRED)
 
 include_directories(
 ${PROJECT_SOURCE_DIR}
-${PROJECT_SOURCE_DIR}/include/
-${PROJECT_SOURCE_DIR}/src/
+${PROJECT_SOURCE_DIR}/include
 ${EIGEN3_INCLUDE_DIR}
 ${Pangolin_INCLUDE_DIRS}
+${CSPARSE_INCLUDE_DIR}
 )
 
 set(CMAKE_LIBRARY_OUTPUT_DIRECTORY ${PROJECT_SOURCE_DIR}/lib)
 
-aux_source_directory(src/ srcFiles)
-add_library(LIB ${srcFiles} src/TwoViewReconstruction.cc src/Frame.cc src/Optimizer.cc)
+add_library(${PROJECT_NAME} SHARED
+        src/System.cc
+        src/Tracking.cc
+        src/ORBextractor.cc
+        src/Converter.cc
+        src/Map.cc
+        src/Optimizer.cc
+        src/Frame.cc
+        src/TwoViewReconstruction.cc
 
-add_subdirectory(Thirdparty/g2o)
+        src/cvplot/color.cc
+        src/cvplot/figure.cc
+        src/cvplot/highgui.cc
+        src/cvplot/window.cc
+        src/cvplot/internal.h
+        wei_slam.cc
+        )
 
-add_executable(${PROJECT_NAME} main.cc include/TwoViewReconstruction.h include/Pinhole.h include/GeometricCamera.h)
-
-target_link_libraries(${PROJECT_NAME}    
-    ${OpenCV_LIBS}
-    ${EIGEN3_LIBS}
-    ${Pangolin_LIBRARIES}
-    ${PROJECT_SOURCE_DIR}/Thirdparty/DBoW2/lib/libDBoW2.so
-    ${PROJECT_SOURCE_DIR}/Thirdparty/g2o/lib/libg2o.so
-    -lboost_serialization
-    -lcrypto
-    LIB
+target_link_libraries(
+        ${PROJECT_NAME}
+        ${OpenCV_LIBS}
+        ${EIGEN3_LIBS}
+        ${CSPARSE_LIBRARY}
+        ${Pangolin_LIBRARIES}
+        ${PROJECT_SOURCE_DIR}/dependencies/DBoW2/lib/libDBoW2.so
+        ${PROJECT_SOURCE_DIR}/dependencies/g2o/lib/libg2o.so
 )
 
+add_executable(wei_slam wei_slam.cc)
+target_link_libraries(wei_slam ${PROJECT_NAME})
 # Build examples
 

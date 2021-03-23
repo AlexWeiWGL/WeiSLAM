@@ -1,0 +1,2 @@
+/usr/bin/ar qc libLIB.a  CMakeFiles/LIB.dir/src/Converter.cc.o CMakeFiles/LIB.dir/src/Frame.cc.o CMakeFiles/LIB.dir/src/Map.cc.o CMakeFiles/LIB.dir/src/ORBextractor.cc.o CMakeFiles/LIB.dir/src/Optimizer.cc.o CMakeFiles/LIB.dir/src/System.cc.o CMakeFiles/LIB.dir/src/Tracking.cc.o CMakeFiles/LIB.dir/src/TwoViewReconstruction.cc.o
+/usr/bin/ranlib libLIB.a

@@ -96,7 +96,7 @@ int main(int argc, char **argv){
             return 1;
         }
 
-        SLAM.TrackRGBD(imRGB, imD_f, imFlow, imSem, mTcw_gt, vObjPose_gt, tframe, imTraj, nImages);
+        SLAM.TrackMono(imRGB, imFlow, imSem, mTcw_gt, vObjPose_gt, tframe, imTraj, nImages);
     };
 
     return 0;
