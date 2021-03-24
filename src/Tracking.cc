@@ -245,11 +245,11 @@ namespace WeiSLAM{
             //currentFrame.mvObjDepth.resize(currentFrame.mvObjKeys.size(), -1);
             //currentFrame.mvObjDepth.resize(currentFrame.mvObjKeys.size(), -1);
             for(int i=0; i<currentFrame.mvObjKeys.size(); ++i){
-                const int u = currentFrame.mvObjKeys[i].pt.x;
-                const int v = currentFrame.mvObjKeys[i].pt.y;
-                if(u<(mImGray.cols - 1) && u>0 && v<(mImGray.rows - 1) && v>0){
+                const int u1 = currentFrame.mvObjKeys[i].pt.x;
+                const int v1 = currentFrame.mvObjKeys[i].pt.y;
+                if(u1<(mImGray.cols - 1) && u1>0 && v1<(mImGray.rows - 1) && v1>0){
                     //currentFrame.mvObjDepth[i] = imDepth.at<float>(v, u);
-                    currentFrame.semObjLabel[i] = maskSEM.at<int>(v, u);
+                    currentFrame.semObjLabel[i] = maskSEM.at<int>(v1, u1);
                 }
                 else{
                     //currentFrame.mvObjDepth[i] = 0.1;

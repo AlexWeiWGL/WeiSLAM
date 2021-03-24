@@ -411,4 +411,32 @@ namespace WeiSLAM {
 
         return KeySave;
     }
+
+    cv::Mat Frame::Calculate3D(cv::KeyPoint &vKey1, cv::KeyPoint &vKey2, cv::Mat &pose, cv::Mat K) {
+        cv::Mat x3D;
+
+        cv::Mat A(4, 4, CV_32F);
+        cv::Mat P1(3, 4, CV_32F, cv::Scalar(0));
+        K.copyTo(P1.rowRange(0, 3).colRange(0, 3));
+
+        cv::Mat P2(3, 4, CV_32F);
+        cv::Mat R = pose.rowRange(0, 3).colRange(0, 3);
+        cv::Mat t = pose.rowRange(0, 3).col(3);
+
+        R.copyTo(P2.rowRange(0, 3).colRange(0, 3));
+        t.copyTo(P2.rowRange(0, 3).col(3));
+        P2 = K*P2;
+
+        A.row(0) = vKey1.pt.x*P1.row(2)-P1.row(0);
+        A.row(1) = vKey1.pt.y*P1.row(2)-P1.row(1);
+        A.row(2) = vKey2.pt.x*P2.row(2)-P2.row(0);
+        A.row(3) = vKey2.pt.y*P2.row(2)-P2.row(1);
+
+        cv::Mat u, w, vt;
+        cv::SVD::compute(A, w, u, vt, cv::SVD::MODIFY_A | cv::SVD::FULL_UV);
+        x3D = vt.row(3).t();
+        x3D = x3D.rowRange(0, 3)/x3D.at<float>(3);
+        x3D = x3D.rowRange(0, 3);
+        return x3D;
+    }
 }
