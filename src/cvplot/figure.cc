@@ -71,6 +71,11 @@ namespace cvplot{
         return *this;
     }
 
+    Series &Series::color(Color color){
+        color_ = color;
+        return *this;
+    }
+
     Series &Series::type(enum Type type) {
         type_ = type;
         return *this;

@@ -334,7 +334,7 @@ namespace WeiSLAM {
 
     cv::Mat Frame::UnprojectStereoObject(const int &i, const bool &addnoise)
     {
-        float z = v3DTmp[i].z;
+        float z = mvObj3DPoint[i].z;
 
         // used for adding noise
         cv::RNG rng((unsigned)time(NULL));
@@ -438,5 +438,87 @@ namespace WeiSLAM {
         x3D = x3D.rowRange(0, 3)/x3D.at<float>(3);
         x3D = x3D.rowRange(0, 3);
         return x3D;
+    }
+
+    cv::Mat Frame::ObtainFlowDepthCamera(const int &i, const bool &addnoise) {
+        float z = mvStat3DPointTmp[i].z;
+
+        cv::RNG rng((unsigned)time(NULL));
+
+        if(addnoise)
+        {
+            z = z + rng.gaussian(z*z/(725*0.5)*0.15);
+        }
+
+        if(z > 0)
+        {
+            const float flow_u = mvFlowNext[i].x;
+            const float flow_v = mvFlowNext[i].y;
+
+            cv::Mat x3Dc = (cv::Mat_<float>(3, 1) << flow_u, flow_v, z);
+
+            return x3Dc;
+        }
+        else
+        {
+            cout << "found a depth value < 0 ...." << endl;
+            return cv::Mat();
+        }
+    }
+
+    cv::Mat Frame::ObtainFlowDepthObject(const int &i, const bool &addnoise) {
+        float z = mvObj3DPoint[i].z;
+
+        cv::RNG rng((unsigned) time(NULL));
+
+        if(addnoise){
+            z = z + rng.gaussian(z*z/(725*0.5)*0.15);
+        }
+
+        if(z>0)
+        {
+            const float flow_u = mvObjFlowNext[i].x;
+            const float flow_v = mvObjFlowNext[i].y;
+
+            cv::Mat x3Dc = (cv::Mat_<float>(3, 1) << flow_u, flow_v, z);
+
+            return x3Dc;
+        }
+        else{
+            cout << "found a depth value < 0 ...." << endl;
+            return cv::Mat();
+        }
+    }
+
+    cv::Mat Frame::UnprojectStereoStat(const int &i, const bool &addnoise) {
+        float z = mvStat3DPointTmp[i].z;
+
+        cv::RNG rng((unsigned)time(NULL));
+
+        if(addnoise){
+            z = z + rng.gaussian(z*z/(725*0.5)*0.15);
+        }
+
+        if(z > 0)
+        {
+            const float u = mvStatKeys[i].pt.x;
+            const float v = mvStatKeys[i].pt.y;
+
+            const float x = (u-cx)*z*invfx;
+            const float y = (v-cy)*z*invfy;
+            cv::Mat x3Dc = (cv::Mat_<float>(3, 1) << x, y, z);
+
+            const cv::Mat Rlw = camPose.rowRange(0, 3).colRange(0, 3);
+            const cv::Mat Rwl = Rlw.t();
+            const cv::Mat tlw = camPose.rowRange(0, 3).col(3);
+            const cv::Mat twl = -Rlw.t()*tlw;
+
+            return Rwl*x3Dc+twl;
+        }
+        else
+        {
+            cout << "found a depth value < 0 ... statKeys" << endl;
+            return cv::Mat();
+        }
     }
 }

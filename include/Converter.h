@@ -6,6 +6,8 @@
 
 #include "dependencies/g2o/g2o/types/types_six_dof_expmap.h"
 #include "dependencies/g2o/g2o/types/types_seven_dof_expmap.h"
+#include <string>
+#include <vector>
 
 namespace WeiSLAM{
     class Converter{

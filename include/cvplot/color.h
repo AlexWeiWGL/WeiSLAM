@@ -6,6 +6,7 @@
 #define WEISLAM_COLOR_H
 
 #include <string>
+#include <vector>
 namespace cvplot{
     struct Color{
         uint8_t  r, g, b, a;

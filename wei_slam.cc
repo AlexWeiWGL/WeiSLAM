@@ -3,11 +3,13 @@
 #include <fstream>
 #include <chrono>
 #include <unistd.h>
+#include <vector>
+#include <string>
 
 #include <opencv2/core/core.hpp>
 #include <opencv2/optflow.hpp>
 
-#include "include/System.h"
+#include <System.h>
 
 using namespace std;
 
@@ -47,9 +49,6 @@ int main(int argc, char **argv){
     int nImages = vstrFilenamesRGB.size();
     if(vstrFilenamesRGB.empty()){
         cerr << endl << "No images found in provided path." << endl;
-        return 1;
-    }else if(vstrFilenamesDEP.size()!=vstrFilenamesRGB.size()){
-        cerr << endl << "Different number of images for depth map" << endl;
         return 1;
     }else if(vstrFilenamesSEM.size()!=vstrFilenamesRGB.size()){
         cerr << endl << "Different number of iamges for segmantation." << endl;
@@ -123,7 +122,6 @@ void LoadData(const string &strPathToSequence, vector<string> &vstrFilenameSEM,
     fTimes.close();
 
     string strPrefixImage = strPathToSequence + "/image_0/";
-    string strPrefixDepth = strPathToSequence + "/depth/";
     string strPrefixSemantic = strPathToSequence + "/semantic/";
     string strPrefixFlow = strPathToSequence + "/flow/";
 
@@ -372,6 +370,6 @@ void LoadMask(const string &strFilenamesMask, cv::Mat &imMask){
             count++;
         }
     }
-
+    file_mask.close();
     return;
 }

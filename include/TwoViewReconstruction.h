@@ -3,6 +3,8 @@
 #define WEISLAM_TWOVIEWRECONSTRUCTION_H
 #include <opencv2/core.hpp>
 #include <unordered_set>
+#include <string>
+#include <vector>
 
 namespace WeiSLAM{
     class TwoViewReconstruction{

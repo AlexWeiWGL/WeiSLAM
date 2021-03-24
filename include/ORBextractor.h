@@ -3,6 +3,7 @@
 
 #include <vector>
 #include <list>
+#include <string>
 #include <opencv/cv.h>
 
 namespace WeiSLAM{

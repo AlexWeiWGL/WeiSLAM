@@ -2,7 +2,8 @@
 #define MAP_H
 
 #include <opencv2/core/core.hpp>
-
+#include <vector>
+#include <string>
 #include <set>
 
 namespace WeiSLAM{

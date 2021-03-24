@@ -571,9 +571,14 @@ namespace WeiSLAM{
             s_1_2 = clock();
             currentFrame.camPose.rowRange(0, 3).colRange(0,3) = RTmp;
             currentFrame.camPose.rowRange(0, 3).col(3) = tTmp;
+
+            for(int i=0; i<currentFrame.N_s; ++i)
+            {
+                currentFrame.mvStat3DPointTmp[i] = Converter::toPoint3f(currentFrame.Calculate3D(currentFrame.mvCorres[i], currentFrame.mvStatKeysTmp[i], currentFrame.camPose, mK));
+            }
             //compute the pose with new matching
             if(bJoint)
-                Optimizer::PoseOptimizationFlow2Cam(&currentFrame, &mLastFrame, TemeralMatch);
+                Optimizer::PoseOptimizationFlow2Cam(&currentFrame, &mLastFrame, TemeralMatch); //可能会出现问题TemeralMatch
             else
                 Optimizer::PoseOptimizationNew(&currentFrame, &mLastFrame, TemeralMatch);
             
@@ -622,7 +627,9 @@ namespace WeiSLAM{
             cout << "Object Tracking ...... " << endl;
             vector<vector<int>> objIdNew = DynObjTracking();
             cout << "Object Tracking, Done !" << endl;
-        
+
+
+
             //Object motion estimation
 
             clock_t s_3_1, s_3_2, e_3_1, e_3_2;
@@ -704,7 +711,9 @@ namespace WeiSLAM{
                 cv::Mat objCentre3D_pre = (cv::Mat_<float>(3, 1) << 0.f, 0.f, 0.f);
                 for(int j=0; j<objIdNew[i].size(); ++j)
                 {
-                    cv::Point3f x3D_p = mLastFrame.v3DTmp[objIdNew[i][j]];
+                    //尝试计算三维坐标
+                    cv::Point3f x3D_p =  Converter::toPoint3f(currentFrame.Calculate3D(currentFrame.mvObjCorres[objIdNew[i][j]], currentFrame.mvObjKeys[objIdNew[i][j]], currentFrame.camPose, mK));
+                    currentFrame.mvObj3DPoint[objIdNew[i][j]] = x3D_p;
                     objCentre3D_pre = objCentre3D_pre + (cv::Mat_<float>(3, 1)<< x3D_p.x, x3D_p.y, x3D_p.z); /// new add mono
                 }
                 objCentre3D_pre = objCentre3D_pre / objIdNew[i].size();
@@ -1046,7 +1055,7 @@ namespace WeiSLAM{
             }
 
             //get the 3d flow
-            cv::Point3f x3D_p = mLastFrame.mvObj3DPoint[i];  //考虑在这用重新用triangulate方法
+            cv::Point3f x3D_p = mLastFrame.mvObj3DPoint[i];  //考虑在这用重新用triangulate方法  暂时完成
             cv::Point3f x3D_c = currentFrame.mvObj3DPoint[i];
 
             pts_p3d[i] << x3D_p.x, x3D_p.y, x3D_p.z;
@@ -2245,8 +2254,8 @@ namespace WeiSLAM{
 
                 if(mSegMap.at<int>(y, x) != 0)
                     continue;
-                if(mDepthMap.at<float>(y, x)>40 || mDepthMap.at<float>(y, x) <= 0)
-                    continue;
+//                if(mDepthMap.at<float>(y, x)>40 || mDepthMap.at<float>(y, x) <= 0)
+//                    continue;
 
                 float flow_xe = mFlowMap.at<cv::Vec2f>(y, x)[0];
                 float flow_ye = mFlowMap.at<cv::Vec2f>(y, x)[1];
@@ -2291,7 +2300,7 @@ namespace WeiSLAM{
         vector<cv::Point3f> mv3DPointTmp(currentFrame.N_s_tmp);
         for(int i=0; i<currentFrame.N_s_tmp; ++i)
         {
-            //mv3DPointTmp[i] = Optimizer::Get3DinWorld(mvKeysTmp[i], mvDepthTmp[i], mK, Converter::toInvMatrix(currentFrame.camPose));
+            mv3DPointTmp[i] = Converter::toPoint3f(Optimizer::Get3DinWorld(mvKeysTmp[i], mvDepthTmp[i], mK, Converter::toInvMatrix(currentFrame.camPose)));
         }
 
         //obtain inlier ID
@@ -2307,7 +2316,7 @@ namespace WeiSLAM{
        //update for Dynamic object Features-----------------
 
        vector<cv::KeyPoint> mvObjKeysTmp;
-       vector<float> mvObjDepthTmp;
+       //vector<float> mvObjDepthTmp;
        vector<cv::KeyPoint> mvObjCorresTmp;
        vector<cv::Point2f> mvObjFlowNextTmp;
        vector<int> vSemObjLabelTmp;
@@ -2342,7 +2351,7 @@ namespace WeiSLAM{
                    if(x+flow_x < mImGrayLast.cols && y+flow_y < mImGrayLast.rows && x+flow_x > 0 && y+flow_y > 0)
                    {
                        mvObjKeysTmp.push_back(cv::KeyPoint(x, y, 0, 0, 0, -1));
-                       mvObjDepthTmp.push_back(mDepthMap.at<float>(y, x));
+                       //mvObjDepthTmp.push_back(mDepthMap.at<float>(y, x));
                        vSemObjLabelTmp.push_back(mSegMap.at<int>(y, x));
                        mvObjFlowNextTmp.push_back(cv::Point2f(flow_x, flow_y));
                        mvObjCorresTmp.push_back(cv::KeyPoint(x+flow_x, y+flow_y, 0, 0, 0, -1));
@@ -2399,7 +2408,7 @@ namespace WeiSLAM{
 
                    //save the found one
                    mvObjKeysTmp.push_back(mvTmpObjKeys[j]);
-                   mvObjDepthTmp.push_back(mvTmpObjectDepth[j]);
+                   //mvObjDepthTmp.push_back(mvTmpObjectDepth[j]);
                    vSemObjLabelTmp.push_back(mvTmpSemObjLabel[j]);
                    mvObjFlowNextTmp.push_back(mvTmpObjFlowNext[j]);
                    mvObjCorresTmp.push_back(mvTmpObjCorres[j]);
@@ -2447,7 +2456,7 @@ namespace WeiSLAM{
                    {
                        //save the found one
                        mvObjKeysTmp.push_back(mvTmpObjKeys[j]);
-                       mvObjDepthTmp.push_back(mvTmpObjectDepth[j]);
+                       //mvObjDepthTmp.push_back(mvTmpObjectDepth[j]);
                        vSemObjLabelTmp.push_back(mvTmpSemObjLabel[j]);
                        mvObjFlowNextTmp.push_back(mvTmpObjFlowNext[j]);
                        mvObjCorresTmp.push_back(mvTmpObjCorres[j]);
@@ -2467,7 +2476,7 @@ namespace WeiSLAM{
 
        //update
        currentFrame.mvObjKeys = mvObjKeysTmp;
-       currentFrame.mvObjDepth = mvObjDepthTmp;
+       //currentFrame.mvObjDepth = mvObjDepthTmp;
        currentFrame.mvObj3DPoint = mvObj3DPointTmp;
        currentFrame.mvObjCorres = mvObjCorresTmp;
        currentFrame.mvObjFlowNext = mvObjFlowNextTmp;
