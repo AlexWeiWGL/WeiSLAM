@@ -80,7 +80,7 @@ namespace WeiSLAM{
         else
             cout << "- color order: BGR (ignored if grayscale)" << endl;
 
-        int nFeatures = fSettings["ORBextractor.scaleFactor"];
+        int nFeatures = fSettings["ORBextractor.nFeatures"];
         float fScaleFactor = fSettings["ORBextractor.scaleFactor"];
         int nlevel = fSettings["ORBextractor.nLevels"];
         int fIniThFAST = fSettings["ORBextractor.iniThFAST"];
@@ -218,6 +218,23 @@ namespace WeiSLAM{
             currentFrame.mvStatKeys = mLastFrame.mvCorres;
             currentFrame.N_s = currentFrame.mvStatKeys.size();
 
+            vector<int> vMatches;
+            for(int i=0; i<currentFrame.mvStatKeys.size(); i++)
+            {
+                vMatches.push_back(i);
+            }
+
+            cv::Mat Rtmp, Ttmp;
+            vector<bool> vTriangulated;
+            //cout << "LastFrame StatKeys" << mLastFrame.mvStatKeys[1].pt.x << " and " << mLastFrame.mvStatKeys[1].pt.y << endl;
+            //cout << "Last Frame StatKeys size : " << mLastFrame.mvStatKeys.size() << "  " << currentFrame.mvStatKeys.size()<< endl;
+            bool isSuccess = reconstruction->Reconstruct(mLastFrame.mvStatKeys, currentFrame.mvStatKeys, vMatches,  Rtmp, Ttmp, currentFrame.mvStat3DPointTmp, vTriangulated);
+            //cout << "The result is " << isSuccess << endl;
+            cv::Mat poseTmp = cv::Mat(4, 4, CV_32F);
+            Rtmp.copyTo(poseTmp.rowRange(0, 3).colRange(0, 3));
+            Ttmp.copyTo(poseTmp.rowRange(0, 3).col(3));
+
+            currentFrame.SetPose(poseTmp);
             //currentFrame.mvStatDepth = vector<float>(currentFrame.N_s, -1);
 //            for(int i=0; i<currentFrame.N_s; i++){
 //                const cv::KeyPoint &kp = currentFrame.mvStatKeys[i];
@@ -557,7 +574,7 @@ namespace WeiSLAM{
             cout << "---------------------------------------------------" << endl;
             
             //update temperalMatch
-            for(int i=0; i<currentFrame.N_s; ++i){
+            for(int i=0; i<currentFrame.mvStatKeys.size(); ++i){
                 TemeralMatch[i] = i;
             }
 
@@ -565,23 +582,36 @@ namespace WeiSLAM{
             double cam_pos_time;
             s_1_1 = clock();
             //get initial estimate using p3p plus RanSac
-            reconstruction->Reconstruct(mLastFrame.mvStatKeys, currentFrame.mvStatKeys, TemeralMatch,RTmp, tTmp, v3DTmp, vbTriangulatedTmp);
+            cv::Mat imPose = GetInitModelCam(TemeralMatch, TemperalMatch_subset);
+            //reconstruction->Reconstruct(mLastFrame.mvStatKeys, currentFrame.mvStatKeys, TemeralMatch,RTmp, tTmp, v3DTmp, vbTriangulatedTmp);
             e_1_1 = clock();
 
             s_1_2 = clock();
-            currentFrame.camPose.rowRange(0, 3).colRange(0,3) = RTmp;
-            currentFrame.camPose.rowRange(0, 3).col(3) = tTmp;
-
-            for(int i=0; i<currentFrame.N_s; ++i)
+            //currentFrame.camPose.rowRange(0, 3).colRange(0,3) = RTmp;
+            //currentFrame.camPose.rowRange(0, 3).col(3) = tTmp;
+            currentFrame.SetPose(imPose);
+            for(int i=0; i<currentFrame.mvStatKeys.size(); ++i)
             {
-                currentFrame.mvStat3DPointTmp[i] = Converter::toPoint3f(currentFrame.Calculate3D(currentFrame.mvCorres[i], currentFrame.mvStatKeysTmp[i], currentFrame.camPose, mK));
+                cv::Point3f tmp3Dpoint;
+                tmp3Dpoint = Converter::toPoint3f(currentFrame.Calculate3D(mLastFrame.mvStatKeys[i], currentFrame.mvStatKeys[i], currentFrame.camPose, mK));
+                if(tmp3Dpoint.z > 0)
+                {
+                    tmp3Dpoint.z = tmp3Dpoint.z / 500.0;
+                    currentFrame.mvStat3DPointTmp[i] = tmp3Dpoint;
+                }
+                else{
+                    tmp3Dpoint.z = 0.0002f;
+                    currentFrame.mvStat3DPointTmp[i] = tmp3Dpoint;
+                }
             }
+
             //compute the pose with new matching
-            if(bJoint)
-                Optimizer::PoseOptimizationFlow2Cam(&currentFrame, &mLastFrame, TemeralMatch); //可能会出现问题TemeralMatch
-            else
-                Optimizer::PoseOptimizationNew(&currentFrame, &mLastFrame, TemeralMatch);
-            
+            if(f_id != 1) {
+                if (bJoint)
+                    Optimizer::PoseOptimizationFlow2Cam(&currentFrame, &mLastFrame,TemperalMatch_subset); //可能会出现问题TemeralMatch
+                else
+                    Optimizer::PoseOptimizationNew(&currentFrame, &mLastFrame, TemperalMatch_subset);
+            }
             e_1_2 = clock();
             cam_pos_time = (double)(e_1_1 - s_1_1)/CLOCKS_PER_SEC*1000 + (double)(e_1_2 - s_1_2)/CLOCKS_PER_SEC*1000;
             all_timing[1] = cam_pos_time;
@@ -611,7 +641,7 @@ namespace WeiSLAM{
             cout << fixed << setprecision(6);
             float r_rpe_cam = acos((trace_rpe_cam - 1.0)/2.0) * 180.0 / CV_PI;
             
-            cout << "the relative pose error of estimated camera pose, " << "t: " << t_rpe_cam << "R: " << r_rpe_cam << endl;
+            cout << "the relative pose error of estimated camera pose, " << "t: " << t_rpe_cam << " R: " << r_rpe_cam << endl;
 
 
 
@@ -648,6 +678,18 @@ namespace WeiSLAM{
             repro_e.resize(objIdNew.size(), 0.0);
             cv::Mat Last_Twc_gt = Converter::toInvMatrix(mLastFrame.mTcw_gt);
             cv::Mat Curr_Twc_gt = Converter::toInvMatrix(currentFrame.mTcw_gt);
+
+            //calculate objects 3D points
+            for(int k=0; k < currentFrame.mvObjKeys.size(); ++k){
+                cv::Point3f x3D_p = Converter::toPoint3f(currentFrame.Calculate3D(mLastFrame.mvObjKeys[k], currentFrame.mvObjKeys[k], currentFrame.camPose, mK));
+                if(x3D_p.z > 0)
+                {
+                    currentFrame.mvObj3DPoint[k] = x3D_p;
+                } else{
+                    x3D_p.z = 0.002f;
+                    currentFrame.mvObj3DPoint[k] = x3D_p;
+                }
+            }
 
             //main loop
             for(int i=0; i<objIdNew.size(); ++i){
@@ -711,9 +753,9 @@ namespace WeiSLAM{
                 cv::Mat objCentre3D_pre = (cv::Mat_<float>(3, 1) << 0.f, 0.f, 0.f);
                 for(int j=0; j<objIdNew[i].size(); ++j)
                 {
-                    //尝试计算三维坐标
-                    cv::Point3f x3D_p =  Converter::toPoint3f(currentFrame.Calculate3D(currentFrame.mvObjCorres[objIdNew[i][j]], currentFrame.mvObjKeys[objIdNew[i][j]], currentFrame.camPose, mK));
-                    currentFrame.mvObj3DPoint[objIdNew[i][j]] = x3D_p;
+                    //provide objects' 3D points
+                    cv::Point3f x3D_p =  currentFrame.mvObj3DPoint[objIdNew[i][j]];
+
                     objCentre3D_pre = objCentre3D_pre + (cv::Mat_<float>(3, 1)<< x3D_p.x, x3D_p.y, x3D_p.z); /// new add mono
                 }
                 objCentre3D_pre = objCentre3D_pre / objIdNew[i].size();
@@ -979,26 +1021,31 @@ namespace WeiSLAM{
         cout << "Initialization ......." << endl;
 
         //initialize the 3d points
-        {
+
+            for(int i=0; i< currentFrame.mvStatKeysTmp.size(); i++)
+                matches12Sta.push_back(i);
+
+            for(int i=0; i<currentFrame.mvObjKeys.size(); i++)
+                matches12Dyn.push_back(i);
             //static
-            fill(matches12Sta.begin(), matches12Sta.end(), -1);
-            vector<bool> vbTriangulatedSta;
-            vector<cv::Point3f> mv3DPointTmp;
-            reconstruction->Reconstruct(currentFrame.mvStatKeysTmp, currentFrame.mvStatKeysTmp, matches12Sta,
-                                        currentFrame.camPose.rowRange(0, 3).colRange(0, 3), currentFrame.camPose.rowRange(0,3).col(3),
-                                        mv3DPointTmp, vbTriangulatedSta);
-            currentFrame.mvStat3DPointTmp = mv3DPointTmp;
+            //fill(matches12Sta.begin(), matches12Sta.end(), -1);
+//            vector<bool> vbTriangulatedSta;
+//            vector<cv::Point3f> mv3DPointTmp;
+//            reconstruction->Reconstruct(currentFrame.mvStatKeysTmp, currentFrame.mvStatKeysTmp, matches12Sta,
+//                                        RTmp, tTmp,
+//                                        mv3DPointTmp, vbTriangulatedSta);
+//            currentFrame.mvStat3DPointTmp = mv3DPointTmp;
 
-            fill(matches12Dyn.begin(), matches12Dyn.end(), -1);
-            vector<bool> vbTriangulatedDyn;
-            vector<cv::Point3f> mvObj3DPointTmp;
-            reconstruction->Reconstruct(currentFrame.mvObjKeys, currentFrame.mvObjKeys, matches12Dyn,
-                                            currentFrame.camPose.rowRange(0, 3).colRange(0, 3), currentFrame.camPose.rowRange(0, 3).col(3),
-                                            mvObj3DPointTmp, vbTriangulatedDyn);
+            //fill(matches12Dyn.begin(), matches12Dyn.end(), -1);
+//            vector<bool> vbTriangulatedDyn;
+//            vector<cv::Point3f> mvObj3DPointTmp;
+//            reconstruction->Reconstruct(currentFrame.mvObjKeys, currentFrame.mvObjKeys, matches12Dyn,
+//                                            RTmp, tTmp,
+//                                            mvObj3DPointTmp, vbTriangulatedDyn);
+//
+//            currentFrame.mvObj3DPoint = mvObj3DPointTmp;
 
-            currentFrame.mvObj3DPoint = mvObj3DPointTmp;
 
-        }
 
         //save detected static features and corresponding depth
         mpMap->vpFeatSta.push_back(currentFrame.mvStatKeysTmp);
@@ -1028,6 +1075,8 @@ namespace WeiSLAM{
         //mLastFrame.mvStatDepth = currentFrame.mvStatDepthTmp;
         mLastFrame.N_s = currentFrame.N_s_tmp;
         mvKeysLastFrame = mLastFrame.mvStatKeys;
+        mLastFrame.mvStat3DPointTmp.reserve(mLastFrame.mvStatKeys.size());
+        mLastFrame.mvObj3DPoint.reserve(mLastFrame.mvObjKeys.size());
 
         mState = OK;
 
@@ -1038,6 +1087,7 @@ namespace WeiSLAM{
     {   
         //initialzation
         int N = currentFrame.mvObjKeys.size();
+        currentFrame.mvObj3DPoint.reserve(currentFrame.mvObjKeys.size());
         currentFrame.flow_3d.resize(N);
 
         vector<Eigen::Vector3d> pts_p3d(N, Eigen::Vector3d(-1, -1, -1)), pts_vel(N, Eigen::Vector3d(-1, -1, -1));
@@ -1052,6 +1102,46 @@ namespace WeiSLAM{
             {
                 currentFrame.objLabel[i] = -1;
                 continue;
+            }
+
+            if(f_id==1) {
+                cv::Mat camPoseInv = currentFrame.camPose.inv();
+                    cv::Point3f tmpObj3Dpoint;
+                    cv::Point3f tmpObj3DPointCur;
+                    tmpObj3Dpoint = Converter::toPoint3f(
+                            currentFrame.Calculate3D(currentFrame.mvObjKeys[i], mLastFrame.mvObjKeys[i], camPoseInv,
+                                                     mK));
+                    tmpObj3DPointCur = Converter::toPoint3f(currentFrame.Calculate3D(mLastFrame.mvObjKeys[i], currentFrame.mvObjKeys[i], currentFrame.camPose,
+                                                                mK));
+                    if (tmpObj3Dpoint.z > 0) {
+                        mLastFrame.mvObj3DPoint[i] = tmpObj3Dpoint;
+                    } else {
+                        tmpObj3Dpoint.z = 0.002f;
+                        mLastFrame.mvObj3DPoint[i] = tmpObj3Dpoint;
+                    }
+
+                    if (tmpObj3DPointCur.z > 0) {
+                        currentFrame.mvObj3DPoint[i] = tmpObj3DPointCur;
+                    } else {
+                        tmpObj3DPointCur.z = 0.002f;
+                        currentFrame.mvObj3DPoint[i] = tmpObj3DPointCur;
+                    }
+
+            }
+            else
+            {
+                    cv::Point3f tmpObj3Dpoint;
+                    cv::Point3f tmpObj3DPointCur;
+                    tmpObj3Dpoint = Converter::toPoint3f(
+                            currentFrame.Calculate3D(mLastFrame.mvObjKeys[i], currentFrame.mvObjKeys[i], currentFrame.camPose,
+                                                     mK));
+
+                    if (tmpObj3Dpoint.z > 0) {
+                        currentFrame.mvObj3DPoint[i] = tmpObj3Dpoint;
+                    } else {
+                        tmpObj3Dpoint.z = 0.002f;
+                        currentFrame.mvObj3DPoint[i] = tmpObj3Dpoint;
+                    }
             }
 
             //get the 3d flow
@@ -1169,7 +1259,7 @@ namespace WeiSLAM{
                         sf_range[7] = sf_range[7] + 1;
                     else if(sf_norm >= 6.4 && sf_norm <12.8)
                         sf_range[8] = sf_range[8] + 1;
-                    else if(sf_norm >= 12.8 && sf_norm <25.8)
+                    else if(sf_norm >= 12.8 && sf_norm <25.6)
                         sf_range[9] = sf_range[9] + 1;
                 }
             }
@@ -1212,6 +1302,8 @@ namespace WeiSLAM{
 
         mpMap->vnSMLabelGT.push_back(nSemPosi_gt_tmp);
 
+        if(f_id ==1)
+            max_id = 1;
 
         //initialize global object id
         vector<int> LabId(ObjIdNew.size());
@@ -1219,7 +1311,7 @@ namespace WeiSLAM{
         {
             //save semantic labels in last frame
             vector<int>lb_last;
-            for(int k=0; k < ObjIdNew[i].size(); ++i)
+            for(int k=0; k < ObjIdNew[i].size(); ++k)
                 lb_last.push_back(mLastFrame.semObjLabel[ObjIdNew[i][k]]);
             
             //find label that appears most in Lb_last
@@ -1240,7 +1332,7 @@ namespace WeiSLAM{
             if(max_id == 1)
             {
                 LabId[i] = max_id;
-                for(int k=0; k<ObjIdNew[i].size(); ++ k)
+                for(int k=0; k<ObjIdNew[i].size(); ++k)
                     currentFrame.objLabel[ObjIdNew[i][k]] = max_id;
                 max_id = max_id + 1;
             }
@@ -1294,10 +1386,7 @@ namespace WeiSLAM{
             tmp_2d.y = currentFrame.mvStatKeys[MatchId[i]].pt.y;
             cur_2d[i] = tmp_2d;
             cv::Point3f tmp_3d;
-            cv::Mat x3D_p;
-            vector<bool> vbTriagulated;
-            //TwoViewReconstruction::Reconstruct(currentFrame.mvKeys[i], currentFrame.mvCorres[i], currentFrame.camPose.rowRange(0, 3).colRange(0, 3)
-             //                                  , currentFrame.camPose.rowRange(0, 3).col(3), x3D_p, vbTriagulated);
+            cv::Mat x3D_p = currentFrame.Calculate3D(mLastFrame.mvStatKeys[MatchId[i]], currentFrame.mvStatKeys[i], currentFrame.camPose, mK);
             tmp_3d.x = x3D_p.at<float>(0);
             tmp_3d.y = x3D_p.at<float>(1);
             tmp_3d.z = x3D_p.at<float>(2);
@@ -1318,10 +1407,11 @@ namespace WeiSLAM{
         cv::Mat Tvec(3, 1, CV_64FC1);
         cv::Mat d(3, 3, CV_64FC1);
         cv::Mat inliers;
+        //currentFrame.camPose.copyTo(Mod);
 
         //solve
-        int iter_num = 500;
-        double reprojectionError = 0.4, confidence = 0.98;
+        int iter_num = 100;
+        double reprojectionError = 0.02, confidence = 0.98;
         cv::solvePnPRansac(pre_3d, cur_2d, camera_mat, disCoeffs, Rvec, Tvec, false,
                     iter_num, reprojectionError, confidence, inliers, cv::SOLVEPNP_AP3P);
         cv::Rodrigues(Rvec, d);
@@ -1394,7 +1484,7 @@ namespace WeiSLAM{
             tmp_2d.y = currentFrame.mvObjKeys[ObjId[i]].pt.y;
             cur_2d[i] = tmp_2d;
             cv::Point3f tmp_3d;
-            cv::Mat x3D_p = mLastFrame.UnprojectStereoObject(ObjId[i], 0);
+            cv::Mat x3D_p =  Converter::toCvMat(currentFrame.mvObj3DPoint[ObjId[i]]);
             tmp_3d.x = x3D_p.at<float>(0);
             tmp_3d.y = x3D_p.at<float>(1);
             tmp_3d.z = x3D_p.at<float>(2);
@@ -1417,7 +1507,7 @@ namespace WeiSLAM{
         cv::Mat inliers;
 
         //solve
-        int iter_num = 500;
+        int iter_num = 100;
         double reprojectionError = 0.4, confidence = 0.98;
         cv::solvePnPRansac(pre_3d, cur_2d, camera_mat, distCoeffs, Rvec, Tvec, false,
                     iter_num, reprojectionError, confidence, inliers, cv::SOLVEPNP_AP3P);
@@ -1431,10 +1521,8 @@ namespace WeiSLAM{
         int CurObjLab = currentFrame.nModLabel[objid];
         int PreObjID = -1;
 
-        for(int i=0; i<mLastFrame.nModLabel.size(); ++i)
-        {
-            if(mLastFrame.nModLabel[i]==CurObjLab)
-            {
+        for (int i = 0; i < mLastFrame.nModLabel.size(); ++i) {
+            if (mLastFrame.nModLabel[i] == CurObjLab) {
                 PreObjID = i;
                 break;
             }
@@ -1445,7 +1533,9 @@ namespace WeiSLAM{
         if(PreObjID != -1)
         {
             vector<int> MM_inlier;
-            MotionModel = currentFrame.camPose*mLastFrame.objMod[PreObjID];
+
+            MotionModel = currentFrame.camPose * mLastFrame.objMod[PreObjID];
+
             for(int i=0; i<N; ++i)
             {
                 const cv::Mat x3D = (cv::Mat_<float>(3, 1) << pre_3d[i].x, pre_3d[i].y, pre_3d[i].z);
@@ -2190,8 +2280,8 @@ namespace WeiSLAM{
             if(mSegMap.at<int>(y, x) != 0)
                 continue;
 
-            if(mDepthMap.at<float>(y, x) > 40 || mDepthMap.at<float>(y, x) <= 0)
-                continue;
+//            if(mDepthMap.at<float>(y, x) > 40 || mDepthMap.at<float>(y, x) <= 0)
+//                continue;
 
             float flow_xe = mFlowMap.at<cv::Vec2f>(y, x)[0];
             float flow_ye = mFlowMap.at<cv::Vec2f>(y, x)[1];

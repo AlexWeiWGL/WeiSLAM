@@ -1,3 +1,11 @@
+/**
+* This file is part of VDO-SLAM.
+*
+* Copyright (C) 2019-2020 Jun Zhang <jun doc zhang2 at anu dot edu doc au> (The Australian National University)
+* For more information see <https://github.com/halajun/VDO_SLAM>
+*
+**/
+
 #include "Optimizer.h"
 
 #include "dependencies/g2o/g2o/core/block_solver.h"
@@ -26,97 +34,96 @@
 
 #include<mutex>
 
-namespace WeiSLAM{
+namespace WeiSLAM
+{
+
     using namespace std;
 
-    void Optimizer::PartialBatchOptimization(Map *pMap, const cv::Mat Calib_k, const int WINDOW_SIZE) {
+    void Optimizer::PartialBatchOptimization(Map* pMap, const cv::Mat Calib_K, const int WINDOW_SIZE)
+    {
+        const int N = pMap->vpFeatSta.size(); // Number of Frames
+        std::vector<std::vector<std::pair<int, int> > > StaTracks = pMap->TrackletSta;
+        std::vector<std::vector<std::pair<int, int> > > DynTracks = pMap->TrackletDyn;
 
-        const int N = pMap->vpFeatDyn.size(); //number of frames
-        vector<vector<pair<int, int>>> StaTracks = pMap->TrackletSta;
-        vector<vector<pair<int, int>>> DynTrakcs = pMap->TrackletDyn;
+        // =======================================================================================
 
-        //mark each feature if it is satisfied for usage
-        //here we use track length as threshold ,for static >= 3, dynamic >=3.
-        //label each feature of the position in TrackKets: -1(invalid) or >=0(TracjID)
-        vector<vector<int>> vnFeaLabSta(N), vnFeaMakSta(N), vnFeaLabDyn(N), vnFeaMakDyn(N);
-
-        //initialize
-        for(int i=0; i<N; ++i)
+        // mark each feature if it is satisfied (valid) for usage
+        // here we use track length as threshold, for static >=3, dynamic >=3.
+        // label each feature of the position in TrackLets: -1(invalid) or >=0(TrackID);
+        // size: static: (N)xM_1, M_1 is the size of features in each frame
+        // size: dynamic: (N)xM_2, M_2 is the size of features in each frame
+        std::vector<std::vector<int> > vnFeaLabSta(N),vnFeaMakSta(N),vnFeaLabDyn(N),vnFeaMakDyn(N);
+        // initialize
+        for (int i = 0; i < N; ++i)
         {
-            vector<int> vnFLS_tmp(pMap->vpFeatSta[i].size(), -1);
+            std::vector<int>  vnFLS_tmp(pMap->vpFeatSta[i].size(),-1);
             vnFeaLabSta[i] = vnFLS_tmp;
             vnFeaMakSta[i] = vnFLS_tmp;
         }
-        for(int i=0; i<N; ++i)
+        for (int i = 0; i < N; ++i)
         {
-            vector<int> vnFLD_tmp(pMap->vpFeatDyn[i].size(), -1);
+            std::vector<int>  vnFLD_tmp(pMap->vpFeatDyn[i].size(),-1);
             vnFeaLabDyn[i] = vnFLD_tmp;
             vnFeaMakDyn[i] = vnFLD_tmp;
         }
         int valid_sta = 0, valid_dyn = 0;
-
-        //label static feature
-        for(int i=0; i<StaTracks.size(); ++i)
+        // label static feature
+        for (int i = 0; i < StaTracks.size(); ++i)
         {
-            //filter the tracklets via threshold
-            if(StaTracks[i].size()<3)
-            {
+            // filter the tracklets via threshold
+            if (StaTracks[i].size()<3) // 3 the length of track on background.
                 continue;
-            }
             valid_sta++;
-            //label them
-            for(int j=0; j<StaTracks[i].size(); ++j)
-            {
+            // label them
+            for (int j = 0; j < StaTracks[i].size(); ++j)
                 vnFeaLabSta[StaTracks[i][j].first][StaTracks[i][j].second] = i;
-            }
         }
-
-        //Label dynamic feature
-        for(int i=0; i<DynTrakcs.size(); ++i)
+        // label dynamic feature
+        for (int i = 0; i < DynTracks.size(); ++i)
         {
-            //filter the tracklets via threshold
-            if(DynTrakcs[i].size()<3)
+            // filter the tracklets via threshold
+            if (DynTracks[i].size()<3) // 3 the length of track on objects.
                 continue;
             valid_dyn++;
-            //label them
-            for(int j=0; j<DynTrakcs[i].size(); ++j)
-            {
-                vnFeaMakDyn[DynTrakcs[i][j].first][DynTrakcs[i][j].second] = i;
+            // label them
+            for (int j = 0; j < DynTracks[i].size(); ++j){
+                vnFeaLabDyn[DynTracks[i][j].first][DynTracks[i][j].second] = i;
+
             }
         }
 
-        //save vertex ID in the graph
-        vector<vector<int>> VertexID(N);
-        //initialize
-        for(int i=0; i<N; ++i)
+        // save vertex ID in the graph
+        std::vector<std::vector<int> > VertexID(N);
+        // initialize
+        for (int i = 0; i < N; ++i)
         {
-            if(i==0)
+            if (i==0)
             {
-                vector<int> v_id_tmp(1, -1);
+                std::vector<int> v_id_tmp(1,-1);
                 VertexID[i] = v_id_tmp;
             }
-            else{
-                vector<int> v_id_tmp(pMap->vnRMLabel[i-1].size(), -1);
+            else
+            {
+                std::vector<int> v_id_tmp(pMap->vnRMLabel[i-1].size(),-1);
                 VertexID[i] = v_id_tmp;
             }
         }
 
-        //check if objects has the required tracking length in current window
-        const int ObjLength = WINDOW_SIZE;
-        vector<vector<bool>> ObjCheck(N-1);
-        for(int i=0; i<N-1; ++i)
+        // check if objects has the required tracking length in current window
+        const int ObjLength = WINDOW_SIZE-1;
+        std::vector<std::vector<bool> > ObjCheck(N-1);
+        for (int i = 0; i < N-1; ++i)
         {
-            vector<bool> ObjCheck_tmp(pMap->vnRMLabel[i].size(), false);
+            std::vector<bool>  ObjCheck_tmp(pMap->vnRMLabel[i].size(),false);
             ObjCheck[i] = ObjCheck_tmp;
         }
-
-        //collect unique object label and how many times it appears
-        vector<int> UniLab, LabCount;
-        for(int i=N-WINDOW_SIZE; i<N-1; ++i)
+        // collect unique object label and how many times it appears
+        std::vector<int> UniLab, LabCount;
+        for (int i = N-WINDOW_SIZE; i < N-1; ++i)
         {
-            if(i==N-WINDOW_SIZE)
+            if (i == N-WINDOW_SIZE)
             {
-                for(int j=1; j<pMap->vnRMLabel[i].size(); ++j)
+                for (int j = 1; j < pMap->vnRMLabel[i].size(); ++j)
                 {
                     UniLab.push_back(pMap->vnRMLabel[i][j]);
                     LabCount.push_back(1);
@@ -124,19 +131,19 @@ namespace WeiSLAM{
             }
             else
             {
-                for(int j=1; j<pMap->vnRMLabel[i].size(); ++j)
+                for (int j = 1; j < pMap->vnRMLabel[i].size(); ++j)
                 {
                     bool used = false;
-                    for(int k=0; k<UniLab.size(); ++k)
+                    for (int k = 0; k < UniLab.size(); ++k)
                     {
-                        if(UniLab[k]==pMap->vnRMLabel[i][j])
+                        if (UniLab[k]==pMap->vnRMLabel[i][j])
                         {
                             used = true;
                             LabCount[k] = LabCount[k] + 1;
                             break;
                         }
                     }
-                    if(used == false)
+                    if (used==false)
                     {
                         UniLab.push_back(pMap->vnRMLabel[i][j]);
                         LabCount.push_back(1);
@@ -144,27 +151,31 @@ namespace WeiSLAM{
                 }
             }
         }
-        // assign the ObjCheck .......
-        for(int i=N-WINDOW_SIZE; i<N-1; ++i)
+        // assign the ObjCheck ......
+        for (int i = N-WINDOW_SIZE; i < N-1; ++i)
         {
-            for(int j=1; j<pMap->vnRMLabel[i].size(); ++j)
+            for (int j = 1; j < pMap->vnRMLabel[i].size(); ++j)
             {
-                for(int k=0; k<UniLab.size(); ++k)
+                for (int k = 0; k < UniLab.size(); ++k)
                 {
-                    if(UniLab[k]==pMap->vnRMLabel[i][j] && LabCount[k]>=ObjLength)
+                    if (UniLab[k]==pMap->vnRMLabel[i][j] && LabCount[k]>=ObjLength)
                     {
-                        ObjCheck[i][j] = true;
+                        ObjCheck[i][j]= true;
                         break;
                     }
                 }
             }
         }
 
+        // =======================================================================================
+
         g2o::SparseOptimizer optimizer;
         g2o::BlockSolverX::LinearSolverType * linearSolver;
         linearSolver = new g2o::LinearSolverCSparse<g2o::BlockSolverX::PoseMatrixType>();
         g2o::BlockSolverX * solver_ptr = new g2o::BlockSolverX(linearSolver);
+        // g2o::OptimizationAlgorithmDogleg* solver = new g2o::OptimizationAlgorithmDogleg(solver_ptr);
         g2o::OptimizationAlgorithmLevenberg* solver = new g2o::OptimizationAlgorithmLevenberg(solver_ptr);
+        // g2o::OptimizationAlgorithmGaussNewton* solver = new g2o::OptimizationAlgorithmGaussNewton(solver_ptr);
         optimizer.setAlgorithm(solver);
 
         g2o::SparseOptimizerTerminateAction* terminateAction = new g2o::SparseOptimizerTerminateAction;
@@ -175,16 +186,16 @@ namespace WeiSLAM{
         cameraOffset->setId(0);
         optimizer.addParameter(cameraOffset);
 
-        //set information matrix
-        const float sigma2_cam = 0.0001;
-        const float sigma2_3d_sta = 16;
-        const float sigma2_obj_smo = 0.1;
-        const float sigma2_obj = 20;
-        const float sigma2_3d_dyn = 16;
+        // === set information matrix ===
+        const float sigma2_cam = 0.0001; // 0.005 0.001
+        const float sigma2_3d_sta = 16; // 50 80 16
+        const float sigma2_obj_smo = 0.1; // 0.1
+        const float sigma2_obj = 20; // 0.5 1 10 20
+        const float sigma2_3d_dyn = 16; // 50 100
         const float sigma2_alti = 1;
 
-        //identity initializatioin
-        cv::Mat id_temp = cv::Mat::eye(4, 4, CV_32F);
+        // === identity initialization ===
+        cv::Mat id_temp = cv::Mat::eye(4,4, CV_32F);
 
         vector<g2o::EdgeSE3*> vpEdgeSE3;
         vector<g2o::LandmarkMotionTernaryEdge*> vpEdgeLandmarkMotion;
@@ -193,22 +204,30 @@ namespace WeiSLAM{
         vector<g2o::EdgeSE3Altitude*> vpEdgeSE3Altitude;
         vector<g2o::EdgeSE3*> vpEdgeSE3Smooth;
 
-        // main loop for input data
+        // ---------------------------------------------------------------------------------------
+        // ---------=============!!!=- Main Loop for input data -=!!!=============----------------
+        // ---------------------------------------------------------------------------------------
         int count_unique_id = 1, FeaLengthThresSta = 3, FeaLengthThresDyn = 3, StaticStartFrame = N-WINDOW_SIZE;
         bool ROBUST_KERNEL = true, ALTITUDE_CONSTRAINT = false, SMOOTH_CONSTRAINT = true, STATIC_ONLY = true;
+        // float deltaHuberCamMot = 0.1, deltaHuberObjMot = 0.25, deltaHuber3D = 0.25;
         float deltaHuberCamMot = 0.01, deltaHuberObjMot = 0.01, deltaHuber3D = 0.01;
         int PreFrameID, CurFrameID;
 
-        // for static points and camera poses
-        for(int i=StaticStartFrame; i<N; ++i)
+        // ===========================================================================
+        // =================== FOR static points and camera poses ====================
+        // ===========================================================================
+        for (int i = StaticStartFrame; i < N; ++i)
         {
+            // (1) save <VERTEX_POSE_R3_SO3>
             g2o::VertexSE3 *v_se3 = new g2o::VertexSE3();
             v_se3->setId(count_unique_id);
             v_se3->setEstimate(Converter::toSE3Quat(pMap->vmCameraPose[i]));
-
+            // v_se3->setEstimate(Converter::toSE3Quat(id_temp));
             optimizer.addVertex(v_se3);
-            if(count_unique_id==1 && N==WINDOW_SIZE)
+            if (count_unique_id==1 && N==WINDOW_SIZE)
             {
+                // cout << "the very first frame: " << N << " " << WINDOW_SIZE << endl;
+                // add prior edges
                 g2o::EdgeSE3Prior * pose_prior = new g2o::EdgeSE3Prior();
                 pose_prior->setVertex(0, optimizer.vertex(count_unique_id));
                 pose_prior->setMeasurement(Converter::toSE3Quat(pMap->vmCameraPose[i]));
@@ -216,22 +235,21 @@ namespace WeiSLAM{
                 pose_prior->setParameterId(0, 0);
                 optimizer.addEdge(pose_prior);
             }
-
             VertexID[i][0] = count_unique_id;
-            //record the ID of current frame saved in graph file
+            // record the ID of current frame saved in graph file
             CurFrameID = count_unique_id;
             count_unique_id++;
 
-            //save camera motion if it is not the first frame
-            if(i!=StaticStartFrame)
+            // ****** save camera motion if it is not the first frame ******
+            if (i!=StaticStartFrame)
             {
-                //save
+                // (2) save <EDGE_R3_SO3>
                 g2o::EdgeSE3 * ep = new g2o::EdgeSE3();
                 ep->setVertex(0, optimizer.vertex(PreFrameID));
                 ep->setVertex(1, optimizer.vertex(CurFrameID));
                 ep->setMeasurement(Converter::toSE3Quat(pMap->vmRigidMotion[i-1][0]));
                 ep->information() = Eigen::MatrixXd::Identity(6, 6)/sigma2_cam;
-                if(ROBUST_KERNEL)
+                if (ROBUST_KERNEL)
                 {
                     g2o::RobustKernelHuber* rk = new g2o::RobustKernelHuber;
                     ep->setRobustKernel(rk);
@@ -239,57 +257,58 @@ namespace WeiSLAM{
                 }
                 optimizer.addEdge(ep);
                 vpEdgeSE3.push_back(ep);
+                // cout << " (1) save camera motion " << endl;
             }
 
-            //loop for static features
-            for(int j=0; j<vnFeaLabSta[i].size(); ++j)
+            // loop for static features
+            for (int j = 0; j < vnFeaLabSta[i].size(); ++j)
             {
-                //check feature validation
-                if(vnFeaLabSta[i][j]==-1)
+                // check feature validation
+                if (vnFeaLabSta[i][j]==-1)
                     continue;
 
-                //get the TrackID of current feature
+                // get the TrackID of current feature
                 int TrackID = vnFeaLabSta[i][j];
 
-                //get the position of current feature in the tracklet
+                // get the position of current feature in the tracklet
                 int PositionID = -1;
-                for(int k=0; k<StaTracks[TrackID].size(); ++k)
+                for (int k = 0; k < StaTracks[TrackID].size(); ++k)
                 {
-                    if(StaTracks[TrackID][k].first == i && StaTracks[TrackID][k].second == j)
+                    if (StaTracks[TrackID][k].first==i && StaTracks[TrackID][k].second==j)
                     {
                         PositionID = k;
                         break;
                     }
                 }
-                if(PositionID==-1){
-                    cout << "Cannot find the position of current feature in the tracklet !!!" << endl;
+                if (PositionID==-1){
+                    cout << "cannot find the position of current feature in the tracklet !!!" << endl;
                     continue;
                 }
 
-                //check if the positionID is 0. yes means this static point is first seen by this frame,
-                //then save both the vertex and edge, otherwise save edge only because vertex is saved before.
-                if(PositionID==0)
+                // check if the PositionID is 0. Yes means this static point is first seen by this frame,
+                // then save both the vertex and edge, otherwise save edge only because vertex is saved before.
+                if (PositionID==0)
                 {
-                    //check if this feature track has the same length as the window size
+                    // check if this feature track has the same length as the window size
                     const int TrLength = StaTracks[TrackID].size();
-                    if(TrLength<FeaLengthThresSta)
+                    if ( TrLength<FeaLengthThresSta )
                         continue;
 
-                    //save <vertex_point_3d>
+                    // (3) save <VERTEX_POINT_3D>
                     g2o::VertexPointXYZ *v_p = new g2o::VertexPointXYZ();
                     v_p->setId(count_unique_id);
                     cv::Mat Xw = Converter::toCvMat(pMap->vp3DPointSta[i][j]);
                     v_p->setEstimate(Converter::toVector3d(Xw));
                     optimizer.addVertex(v_p);
 
-                    //save <edge_3d>
+                    // (4) save <EDGE_3D>
                     g2o::EdgeSE3PointXYZ * e = new g2o::EdgeSE3PointXYZ();
                     e->setVertex(0, optimizer.vertex(CurFrameID));
                     e->setVertex(1, optimizer.vertex(count_unique_id));
-                    cv::Mat Xc = Optimizer::Get3DinCamera(pMap->vpFeatSta[i][j], pMap->vfDepSta[i][j], Calib_k);
+                    cv::Mat Xc = Optimizer::Get3DinCamera(pMap->vpFeatSta[i][j],pMap->vfDepSta[i][j],Calib_K);
                     e->setMeasurement(Converter::toVector3d(Xc));
                     e->information() = Eigen::Matrix3d::Identity()/sigma2_3d_sta;
-                    if(ROBUST_KERNEL)
+                    if (ROBUST_KERNEL)
                     {
                         g2o::RobustKernelHuber* rk = new g2o::RobustKernelHuber;
                         e->setRobustKernel(rk);
@@ -299,25 +318,27 @@ namespace WeiSLAM{
                     optimizer.addEdge(e);
                     vpEdgeSE3PointSta.push_back(e);
 
-                    //update unique id
+                    // update unique id
                     vnFeaMakSta[i][j] = count_unique_id;
                     count_unique_id++;
                 }
                 else
                 {
+                    // check if this feature track has the same length as the window size
+                    // or its previous FeaMakTmp is not -1, then save it, otherwise skip.
                     const int TrLength = StaTracks[TrackID].size();
                     const int FeaMakTmp = vnFeaMakSta[StaTracks[TrackID][PositionID-1].first][StaTracks[TrackID][PositionID-1].second];
-                    if(TrLength<FeaLengthThresSta || FeaMakTmp==-1)
+                    if (TrLength<FeaLengthThresSta || FeaMakTmp==-1)
                         continue;
 
-                    //save <edge_3D>
+                    // (4) save <EDGE_3D>
                     g2o::EdgeSE3PointXYZ * e = new g2o::EdgeSE3PointXYZ();
                     e->setVertex(0, optimizer.vertex(CurFrameID));
                     e->setVertex(1, optimizer.vertex(FeaMakTmp));
-                    cv::Mat Xc = Optimizer::Get3DinCamera(pMap->vpFeatSta[i][j], pMap->vfDepSta[i][j], Calib_k);
+                    cv::Mat Xc = Optimizer::Get3DinCamera(pMap->vpFeatSta[i][j],pMap->vfDepSta[i][j],Calib_K);
                     e->setMeasurement(Converter::toVector3d(Xc));
                     e->information() = Eigen::Matrix3d::Identity()/sigma2_3d_sta;
-                    if(ROBUST_KERNEL)
+                    if (ROBUST_KERNEL)
                     {
                         g2o::RobustKernelHuber* rk = new g2o::RobustKernelHuber;
                         e->setRobustKernel(rk);
@@ -327,66 +348,73 @@ namespace WeiSLAM{
                     optimizer.addEdge(e);
                     vpEdgeSE3PointSta.push_back(e);
 
-                    //update unique id
+                    // update unique id
                     vnFeaMakSta[i][j] = FeaMakTmp;
                 }
+
             }
 
-            //update frame ID
+            // cout << " (2) save static features " << endl;
+
+            // update frame ID
             PreFrameID = CurFrameID;
         }
 
-        // save object motion, then dynamic features
-        for(int i=N-WINDOW_SIZE; i<N; ++i)
+        // **********************************************************************
+        // ************** save object motion, then dynamic features *************
+        // **********************************************************************
+        for (int i = N-WINDOW_SIZE; i < N; ++i)
         {
-            if(STATIC_ONLY== false)
+            // cout << "current processing frame: " << i << endl;
+
+            if (STATIC_ONLY==false)
             {
-                if(i=N-WINDOW_SIZE)
+                if (i==N-WINDOW_SIZE)
                 {
-                    for(int j=0; j<vnFeaLabDyn[i].size(); ++j)
+                    // loop for dynamic features
+                    for (int j = 0; j < vnFeaLabDyn[i].size(); ++j)
                     {
-                        //chech feature validation
-                        if(vnFeaLabDyn[i][j]==-1)
+                        // check feature validation
+                        if (vnFeaLabDyn[i][j]==-1)
                             continue;
 
-                        //get the TrackID of current feature
+                        // get the TrackID of current feature
                         int TrackID = vnFeaLabDyn[i][j];
 
-                        //get the position of current feature in the tracklet
+                        // get the position of current feature in the tracklet
                         int PositionID = -1;
-                        for(int k=0; k<DynTrakcs[TrackID].size(); ++k)
+                        for (int k = 0; k < DynTracks[TrackID].size(); ++k)
                         {
-                            if(DynTrakcs[TrackID][k].first==i && DynTrakcs[TrackID][k].second==j)
+                            if (DynTracks[TrackID][k].first==i && DynTracks[TrackID][k].second==j)
                             {
                                 PositionID = k;
                                 break;
                             }
                         }
-                        if(PositionID==-1)
-                        {
+                        if (PositionID==-1){
                             cout << "cannot find the position of current feature in the tracklet !!!" << endl;
                             continue;
                         }
 
-                        //check if this feature track has the same length as the window size
-                        const int TrLength = DynTrakcs[TrackID].size();
-                        if(TrLength-PositionID<FeaLengthThresDyn)
+                        // check if this feature track has the same length as the window size
+                        const int TrLength = DynTracks[TrackID].size();
+                        if ( TrLength-PositionID<FeaLengthThresDyn )
                             continue;
 
-                        //save <vertex_point_3D>
-                        g2o::VertexPointXYZ * v_p = new g2o::VertexPointXYZ();
+                        // (3) save <VERTEX_POINT_3D>
+                        g2o::VertexPointXYZ *v_p = new g2o::VertexPointXYZ();
                         v_p->setId(count_unique_id);
                         cv::Mat Xw = Converter::toCvMat(pMap->vp3DPointDyn[i][j]);
                         v_p->setEstimate(Converter::toVector3d(Xw));
                         optimizer.addVertex(v_p);
-                        //save <edge_3d>
+                        // (4) save <EDGE_3D>
                         g2o::EdgeSE3PointXYZ * e = new g2o::EdgeSE3PointXYZ();
                         e->setVertex(0, optimizer.vertex(VertexID[i][0]));
                         e->setVertex(1, optimizer.vertex(count_unique_id));
-                        cv::Mat Xc = Optimizer::Get3DinCamera(pMap->vpFeatDyn[i][j], pMap->vfDepDyn[i][j], Calib_k);
+                        cv::Mat Xc = Optimizer::Get3DinCamera(pMap->vpFeatDyn[i][j],pMap->vfDepDyn[i][j],Calib_K);
                         e->setMeasurement(Converter::toVector3d(Xc));
                         e->information() = Eigen::Matrix3d::Identity()/sigma2_3d_dyn;
-                        if(ROBUST_KERNEL){
+                        if (ROBUST_KERNEL){
                             g2o::RobustKernelHuber* rk = new g2o::RobustKernelHuber;
                             e->setRobustKernel(rk);
                             e->robustKernel()->setDelta(deltaHuber3D);
@@ -395,60 +423,62 @@ namespace WeiSLAM{
                         optimizer.addEdge(e);
                         vpEdgeSE3PointDyn.push_back(e);
 
-                        //update unique id
+                        // update unique id
                         vnFeaMakDyn[i][j] = count_unique_id;
                         count_unique_id++;
                     }
                 }
                 else
                 {
-                    //loop for object motion, and keep the unique vertex id for saving object feature edges
-                    vector<int> ObjUniqueID(pMap->vmRigidMotion[i-1].size(), -1);
-
-                    //save <vertex_se3motion>
-                    for(int j=1; j<pMap->vmRigidMotion[i-1].size(); ++j)
+                    // loop for object motion, and keep the unique vertex id for saving object feature edges
+                    std::vector<int> ObjUniqueID(pMap->vmRigidMotion[i-1].size(),-1);
+                    // (5) save <VERTEX_SE3Motion>
+                    for (int j = 1; j < pMap->vmRigidMotion[i-1].size(); ++j)
                     {
-                        if(ObjCheck[i-1][j]==false)
+                        if (ObjCheck[i-1][j]==false)
                             continue;
 
-                        g2o::VertexSE3 * m_se3 = new g2o::VertexSE3();
+                        g2o::VertexSE3 *m_se3 = new g2o::VertexSE3();
                         m_se3->setId(count_unique_id);
-                        if(pMap->vbObjStat[i-1][j])
+                        if (pMap->vbObjStat[i-1][j])
                             m_se3->setEstimate(Converter::toSE3Quat(pMap->vmRigidMotion[i-1][j]));
                         else
                             m_se3->setEstimate(Converter::toSE3Quat(id_temp));
+                        // m_se3->setEstimate(Converter::toSE3Quat(id_temp));
                         optimizer.addVertex(m_se3);
-                        if(ALTITUDE_CONSTRAINT)
+                        if (ALTITUDE_CONSTRAINT)
                         {
                             g2o::EdgeSE3Altitude * ea = new g2o::EdgeSE3Altitude();
                             ea->setVertex(0, optimizer.vertex(count_unique_id));
                             ea->setMeasurement(0);
                             Eigen::Matrix<double, 1, 1> altitude_information(1.0/sigma2_alti);
+                            ea->information() = altitude_information;
                             optimizer.addEdge(ea);
                             vpEdgeSE3Altitude.push_back(ea);
                         }
-                        if(SMOOTH_CONSTRAINT && i>N-WINDOW_SIZE+2)
+                        if (SMOOTH_CONSTRAINT && i>N-WINDOW_SIZE+2)
                         {
+                            // trace back the previous id in vnRMLabel
                             int TraceID = -1;
-                            for(int k=0; k<pMap->vnRMLabel[i-2].size(); ++k)
+                            for (int k = 0; k < pMap->vnRMLabel[i-2].size(); ++k)
                             {
-                                if(pMap->vnRMLabel[i-2][k]==pMap->vnRMLabel[i-1][j])
+                                if (pMap->vnRMLabel[i-2][k]==pMap->vnRMLabel[i-1][j])
                                 {
+                                    // cout << "what is in the label: " << pMap->vnRMLabel[i-2][k] << " " << pMap->vnRMLabel[i-1][j] << " " << VertexID[i-2][k] << endl;
                                     TraceID = k;
                                     break;
                                 }
                             }
-                            //only if the back trace exist
-                            if(TraceID != -1)
+                            // only if the back trace exist
+                            if (TraceID!=-1)
                             {
-                                //add smooth constraint
+                                // add smooth constraint
                                 g2o::EdgeSE3 * ep = new g2o::EdgeSE3();
                                 ep->setVertex(0, optimizer.vertex(VertexID[i-1][TraceID]));
                                 ep->setVertex(1, optimizer.vertex(count_unique_id));
-                                ep->setMeasurement(Converter::toSE3Quat(cv::Mat::eye(4, 4, CV_32F)));
+                                ep->setMeasurement(Converter::toSE3Quat(cv::Mat::eye(4,4,CV_32F)));
                                 ep->information() = Eigen::MatrixXd::Identity(6, 6)/sigma2_obj_smo;
-                                if(ROBUST_KERNEL)
-                                {
+                                if (ROBUST_KERNEL){
                                     g2o::RobustKernelHuber* rk = new g2o::RobustKernelHuber;
                                     ep->setRobustKernel(rk);
                                     ep->robustKernel()->setDelta(deltaHuberCamMot);
@@ -457,51 +487,60 @@ namespace WeiSLAM{
                                 vpEdgeSE3Smooth.push_back(ep);
                             }
                         }
-                        ObjUniqueID[j] = count_unique_id;
-                        VertexID[i][j] = count_unique_id;
+                        ObjUniqueID[j]=count_unique_id;
+                        VertexID[i][j]=count_unique_id;
                         count_unique_id++;
                     }
 
-                    for(int j=0; j<vnFeaLabDyn[i].size(); j++)
+                    // cout << " (3) save object motion " << endl;
+
+                    // // save for dynamic features
+                    for (int j = 0; j < vnFeaLabDyn[i].size(); j++)
                     {
-                        if(vnFeaLabDyn[i][j]==-1)
+                        // check feature validation
+                        if (vnFeaLabDyn[i][j]==-1)
                             continue;
 
+                        // get the TrackID of current feature
                         int TrackID = vnFeaLabDyn[i][j];
 
+                        // get the position of current feature in the tracklet
                         int PositionID = -1;
-                        for(int k=0; k<DynTrakcs[TrackID].size(); ++k)
+                        for (int k = 0; k < DynTracks[TrackID].size(); ++k)
                         {
-                            if(DynTrakcs[TrackID][k].first==i & DynTrakcs[TrackID][k].second==j)
+                            if (DynTracks[TrackID][k].first==i && DynTracks[TrackID][k].second==j)
                             {
                                 PositionID = k;
                                 break;
                             }
                         }
-                        if(PositionID==-1)
-                        {
-                            cout << "cannot find the position of current feature in the tracklet !!!"<< endl;
+                        if (PositionID==-1){
+                            cout << "cannot find the position of current feature in the tracklet !!!" << endl;
                             continue;
                         }
 
+                        // get the object position id of current feature
                         int ObjPositionID = -1;
-                        for(int k=1; k<pMap->vnRMLabel[i-1].size(); ++k)
+                        for (int k = 1; k < pMap->vnRMLabel[i-1].size(); ++k)
                         {
-                            if(pMap->vnRMLabel[i-1][k]==pMap->nObjID[TrackID]){
+                            if (pMap->vnRMLabel[i-1][k]==pMap->nObjID[TrackID]){
                                 ObjPositionID = ObjUniqueID[k];
                                 break;
                             }
                         }
-                        if(ObjPositionID == -1 && PositionID !=0)
-                        {
+                        if (ObjPositionID==-1 && PositionID!=0){
+                            // cout << "cannot find the object association with this edge !!! WEIRD POINT !!! " << endl;
                             continue;
                         }
 
+
+                        // check if the PositionID is 0. Yes means this dynamic point is first seen by this frame,
+                        // then save both the vertex and edge, otherwise save edge only because vertex is saved before.
                         if (PositionID==0)
                         {
 
                             // check if this feature track has the same length as the window size
-                            const int TrLength = DynTrakcs[TrackID].size();
+                            const int TrLength = DynTracks[TrackID].size();
                             if ( TrLength<FeaLengthThresDyn )
                                 continue;
 
@@ -515,7 +554,7 @@ namespace WeiSLAM{
                             g2o::EdgeSE3PointXYZ * e = new g2o::EdgeSE3PointXYZ();
                             e->setVertex(0, optimizer.vertex(VertexID[i][0]));
                             e->setVertex(1, optimizer.vertex(count_unique_id));
-                            cv::Mat Xc = Optimizer::Get3DinCamera(pMap->vpFeatDyn[i][j],pMap->vfDepDyn[i][j],Calib_k);
+                            cv::Mat Xc = Optimizer::Get3DinCamera(pMap->vpFeatDyn[i][j],pMap->vfDepDyn[i][j],Calib_K);
                             e->setMeasurement(Converter::toVector3d(Xc));
                             e->information() = Eigen::Matrix3d::Identity()/sigma2_3d_dyn;
                             if (ROBUST_KERNEL)
@@ -536,8 +575,8 @@ namespace WeiSLAM{
                         else
                         {
                             // check if this feature track has the same length as the window size
-                            const int TrLength = DynTrakcs[TrackID].size();
-                            const int FeaMakTmp = vnFeaMakDyn[DynTrakcs[TrackID][PositionID-1].first][DynTrakcs[TrackID][PositionID-1].second];
+                            const int TrLength = DynTracks[TrackID].size();
+                            const int FeaMakTmp = vnFeaMakDyn[DynTracks[TrackID][PositionID-1].first][DynTracks[TrackID][PositionID-1].second];
                             if ( TrLength-PositionID<FeaLengthThresDyn && FeaMakTmp==-1 )
                                 continue;
 
@@ -551,7 +590,7 @@ namespace WeiSLAM{
                             g2o::EdgeSE3PointXYZ * e = new g2o::EdgeSE3PointXYZ();
                             e->setVertex(0, optimizer.vertex(VertexID[i][0]));
                             e->setVertex(1, optimizer.vertex(count_unique_id));
-                            cv::Mat Xc = Optimizer::Get3DinCamera(pMap->vpFeatDyn[i][j],pMap->vfDepDyn[i][j], Calib_k);
+                            cv::Mat Xc = Optimizer::Get3DinCamera(pMap->vpFeatDyn[i][j],pMap->vfDepDyn[i][j],Calib_K);
                             e->setMeasurement(Converter::toVector3d(Xc));
                             e->information() = Eigen::Matrix3d::Identity()/sigma2_3d_dyn;
                             if (ROBUST_KERNEL)
@@ -2132,20 +2171,21 @@ namespace WeiSLAM{
             }
         }
 
+
     }
 
     int Optimizer::PoseOptimizationNew(Frame *pCurFrame, Frame *pLastFrame, vector<int> &TemperalMatch)
     {
         // cv::RNG rng((unsigned)time(NULL));
 
-        float rp_thres = 0.01;
+        float rp_thres = 0.05;
 
         g2o::SparseOptimizer optimizer;
-        g2o::BlockSolver_6_3::LinearSolverType * linearSolver;
+        g2o::BlockSolverX ::LinearSolverType * linearSolver;
 
-        linearSolver = new g2o::LinearSolverDense<g2o::BlockSolver_6_3::PoseMatrixType>();
+        linearSolver = new g2o::LinearSolverDense<g2o::BlockSolverX ::PoseMatrixType>();
 
-        g2o::BlockSolver_6_3 * solver_ptr = new g2o::BlockSolver_6_3(linearSolver);
+        g2o::BlockSolverX * solver_ptr = new g2o::BlockSolverX (linearSolver);
 
         g2o::OptimizationAlgorithmLevenberg* solver = new g2o::OptimizationAlgorithmLevenberg(solver_ptr);
         optimizer.setAlgorithm(solver);
@@ -2225,7 +2265,7 @@ namespace WeiSLAM{
         // We perform 4 optimizations, after each optimization we classify observation as inlier/outlier
         // At the next optimization, outliers are not included, but at the end they can be classified as inliers again.
         const float chi2Mono[4]={rp_thres,5.991,5.991,5.991};
-        const int its[4]={100,10,10,10};
+        const int its[4]={50,10,10,10};
 
         int nBad=0;
         for(size_t it=0; it<1; it++)
@@ -2297,11 +2337,11 @@ namespace WeiSLAM{
 
         g2o::SparseOptimizer optimizer;
         // optimizer.setVerbose(true);
-        g2o::BlockSolver_6_3::LinearSolverType * linearSolver;
+        g2o::BlockSolverX ::LinearSolverType * linearSolver;
 
-        linearSolver = new g2o::LinearSolverDense<g2o::BlockSolver_6_3::PoseMatrixType>();
+        linearSolver = new g2o::LinearSolverDense<g2o::BlockSolverX ::PoseMatrixType>();
 
-        g2o::BlockSolver_6_3 * solver_ptr = new g2o::BlockSolver_6_3(linearSolver);
+        g2o::BlockSolverX * solver_ptr = new g2o::BlockSolverX(linearSolver);
 
         g2o::OptimizationAlgorithmLevenberg* solver = new g2o::OptimizationAlgorithmLevenberg(solver_ptr);
 
@@ -2412,7 +2452,7 @@ namespace WeiSLAM{
         // We perform 4 optimizations, after each optimization we classify observation as inlier/outlier
         // At the next optimization, outliers are not included, but at the end they can be classified as inliers again.
         const float chi2Mono[4]={rp_thres,5.991,5.991,5.991}; // {5.991,5.991,5.991,5.991} {4,4,4,4}
-        const int its[4]={100,100,100,100};
+        const int its[4]={100, 100, 100, 100};
 
         int nBad=0;
         cout << endl;
@@ -2930,6 +2970,8 @@ namespace WeiSLAM{
 
         return pose;
     }
+
+
 
     cv::Mat Optimizer::Get3DinWorld(const cv::KeyPoint &Feats2d, const float &Dpts, const cv::Mat &Calib_K, const cv::Mat &CameraPose)
     {

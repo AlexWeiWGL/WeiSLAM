@@ -1,89 +1,104 @@
+/**
+* This file is part of VDO-SLAM.
+*
+* Copyright (C) 2019-2020 Jun Zhang <jun doc zhang2 at anu dot edu doc au> (The Australian National University)
+* For more information see <https://github.com/halajun/VDO_SLAM>
+*
+**/
+
 #ifndef ORBEXTRACTOR_H
 #define ORBEXTRACTOR_H
 
 #include <vector>
 #include <list>
-#include <string>
 #include <opencv/cv.h>
 
-namespace WeiSLAM{
-    class ExtractorNode{
-        public:
-            ExtractorNode():bNoMore(false){}
 
-            void DivideNode(ExtractorNode &n1, ExtractorNode &n2, ExtractorNode &n3, ExtractorNode &n4);
-            
-            std::vector<cv::KeyPoint> vKeys;
-            cv::Point2i UL, UR, BL, BR;
-            std::list<ExtractorNode>::iterator lit;
-            bool bNoMore;
+namespace WeiSLAM
+{
+
+    class ExtractorNode
+    {
+    public:
+        ExtractorNode():bNoMore(false){}
+
+        void DivideNode(ExtractorNode &n1, ExtractorNode &n2, ExtractorNode &n3, ExtractorNode &n4);
+
+        std::vector<cv::KeyPoint> vKeys;
+        cv::Point2i UL, UR, BL, BR;
+        std::list<ExtractorNode>::iterator lit;
+        bool bNoMore;
     };
 
-    class ORBextractor{
-        public:
-            enum{HARRIS_SCORE=0, FAST_SCORE=1};
+    class ORBextractor
+    {
+    public:
 
-            ORBextractor(int nfeatures, float scaleFactor, int nlevels,
-                         int iniThFAST, int minThFAST);
-            
-            ~ORBextractor(){}
+        enum {HARRIS_SCORE=0, FAST_SCORE=1 };
 
-            void operator()(cv::InputArray _image, cv::InputArray _mask,
-                           std::vector<cv::KeyPoint>& _keypoints,
-                           cv::OutputArray _descriptors);
-            
-            int inline GetLevels(){
-                return nlevels;
-            }
+        ORBextractor(int nfeatures, float scaleFactor, int nlevels,
+                     int iniThFAST, int minThFAST);
 
-            float inline GetScaleFactor(){
-                return scaleFactor;
-            }
+        ~ORBextractor(){}
 
-            std::vector<float> inline GetScaleFactors(){
-                return mvScaleFactor;
-            }
+        // Compute the ORB features and descriptors on an image.
+        // ORB are dispersed on the image using an octree.
+        // Mask is ignored in the current implementation.
+        void operator()( cv::InputArray image, cv::InputArray mask,
+                         std::vector<cv::KeyPoint>& keypoints,
+                         cv::OutputArray descriptors);
 
-            std::vector<float> inline GetInverseScaleFactors(){
-                return mvInvScaleFactor;
-            }
+        int inline GetLevels(){
+            return nlevels;}
 
-            std::vector<float> inline GetScaleSigmaSquares(){
-                return mvLevelSigma2;
-            }
+        float inline GetScaleFactor(){
+            return scaleFactor;}
 
-            std::vector<float> inline GetInverseScaleSigmaSquares(){
-                return mvInvLevelSigma2;
-            }
+        std::vector<float> inline GetScaleFactors(){
+            return mvScaleFactor;
+        }
 
-            std::vector<cv::Mat> mvImagePyramid;
+        std::vector<float> inline GetInverseScaleFactors(){
+            return mvInvScaleFactor;
+        }
 
-        protected:
+        std::vector<float> inline GetScaleSigmaSquares(){
+            return mvLevelSigma2;
+        }
 
-            void ComputePyramid(cv::Mat image);
-            void ComputeKeyPointsOctTree(std::vector<std::vector<cv::KeyPoint>> & allKeypoints);
-            std::vector<cv::KeyPoint> DistributeOctTree(const std::vector<cv::KeyPoint> &vToDistributeKeys, const int &minX,
-                                                    const int &maxX, const int &MinY, const int &maxY, const int &nFeatures, const int &level);
-            
-            void ComputeKeyPointsOld(std::vector<std::vector<cv::KeyPoint>> & allKeypoints);
-            std::vector<cv::Point> pattern;
+        std::vector<float> inline GetInverseScaleSigmaSquares(){
+            return mvInvLevelSigma2;
+        }
 
-            int nfeatures;
-            double scaleFactor;
-            int nlevels;
-            int iniThFAST;
-            int minThFAST;
+        std::vector<cv::Mat> mvImagePyramid;
 
-            std::vector<int> mnFeaturesPerLevel;
-            
-            std::vector<int> umax;
+    protected:
 
-            std::vector<float> mvScaleFactor;
-            std::vector<float> mvInvScaleFactor;
-            std::vector<float> mvLevelSigma2;
-            std::vector<float> mvInvLevelSigma2;
+        void ComputePyramid(cv::Mat image);
+        void ComputeKeyPointsOctTree(std::vector<std::vector<cv::KeyPoint> >& allKeypoints);
+        std::vector<cv::KeyPoint> DistributeOctTree(const std::vector<cv::KeyPoint>& vToDistributeKeys, const int &minX,
+                                                    const int &maxX, const int &minY, const int &maxY, const int &nFeatures, const int &level);
 
+        void ComputeKeyPointsOld(std::vector<std::vector<cv::KeyPoint> >& allKeypoints);
+        std::vector<cv::Point> pattern;
+
+        int nfeatures;
+        double scaleFactor;
+        int nlevels;
+        int iniThFAST;
+        int minThFAST;
+
+        std::vector<int> mnFeaturesPerLevel;
+
+        std::vector<int> umax;
+
+        std::vector<float> mvScaleFactor;
+        std::vector<float> mvInvScaleFactor;
+        std::vector<float> mvLevelSigma2;
+        std::vector<float> mvInvLevelSigma2;
     };
-}
+
+} //namespace WeiSLAM
 
 #endif
+

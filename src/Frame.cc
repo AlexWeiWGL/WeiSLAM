@@ -208,7 +208,7 @@ namespace WeiSLAM {
     void Frame::UpdatePoseMatrices() {
         mRcw = camPose.rowRange(0, 3).colRange(0, 3);
         mRwc = mRcw.t();
-        mtcw = mtcw.rowRange(0, 3).col(3);
+        mtcw = camPose.rowRange(0, 3).col(3);
         mOw = -mRcw.t() * mtcw;
     }
 
