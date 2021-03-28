@@ -363,7 +363,7 @@ namespace WeiSLAM {
             return Rwl*x3Dc+twl;
         }
         else{
-            cout << "found a depth value < 0 ..." << endl;
+            cout << "found a depth < 0 ......";
             return cv::Mat();
         }
     }
@@ -475,6 +475,11 @@ namespace WeiSLAM {
             z = z + rng.gaussian(z*z/(725*0.5)*0.15);
         }
 
+        if(z <= 0)
+        {
+            z = 10000;
+        }
+
         if(z>0)
         {
             const float flow_u = mvObjFlowNext[i].x;
@@ -499,7 +504,7 @@ namespace WeiSLAM {
             z = z + rng.gaussian(z*z/(725*0.5)*0.15);
         }
 
-        if(z > 0)
+        if(z >= 0)
         {
             const float u = mvStatKeys[i].pt.x;
             const float v = mvStatKeys[i].pt.y;

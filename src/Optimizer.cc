@@ -2178,7 +2178,7 @@ namespace WeiSLAM
     {
         // cv::RNG rng((unsigned)time(NULL));
 
-        float rp_thres = 0.05;
+        float rp_thres = 5.991;
 
         g2o::SparseOptimizer optimizer;
         g2o::BlockSolverX ::LinearSolverType * linearSolver;
@@ -2332,7 +2332,7 @@ namespace WeiSLAM
 
     int Optimizer::PoseOptimizationFlow2Cam(Frame *pCurFrame, Frame *pLastFrame, vector<int> &TemperalMatch)
     {
-        float rp_thres = 0.04; // 0.01
+        float rp_thres = 5.991; // 0.01
         bool updateflow = true;
 
         g2o::SparseOptimizer optimizer;
@@ -2452,7 +2452,7 @@ namespace WeiSLAM
         // We perform 4 optimizations, after each optimization we classify observation as inlier/outlier
         // At the next optimization, outliers are not included, but at the end they can be classified as inliers again.
         const float chi2Mono[4]={rp_thres,5.991,5.991,5.991}; // {5.991,5.991,5.991,5.991} {4,4,4,4}
-        const int its[4]={100, 100, 100, 100};
+        const int its[4]={200, 200, 200, 200};
 
         int nBad=0;
         cout << endl;
@@ -2543,15 +2543,15 @@ namespace WeiSLAM
 
     cv::Mat Optimizer::PoseOptimizationObjMot(Frame *pCurFrame, Frame *pLastFrame, const vector<int> &ObjId, std::vector<int> &InlierID)
     {
-        float rp_thres = 0.01;
+        float rp_thres = 5.991;
 
         g2o::SparseOptimizer optimizer;
         // optimizer.setVerbose(true);
-        g2o::BlockSolver_6_3::LinearSolverType * linearSolver;
+        g2o::BlockSolverX::LinearSolverType * linearSolver;
 
-        linearSolver = new g2o::LinearSolverDense<g2o::BlockSolver_6_3::PoseMatrixType>();
+        linearSolver = new g2o::LinearSolverDense<g2o::BlockSolverX::PoseMatrixType>();
 
-        g2o::BlockSolver_6_3 * solver_ptr = new g2o::BlockSolver_6_3(linearSolver);
+        g2o::BlockSolverX * solver_ptr = new g2o::BlockSolverX(linearSolver);
 
         g2o::OptimizationAlgorithmLevenberg* solver = new g2o::OptimizationAlgorithmLevenberg(solver_ptr);
         optimizer.setAlgorithm(solver);
@@ -2754,16 +2754,16 @@ namespace WeiSLAM
 
     cv::Mat Optimizer::PoseOptimizationFlow2(Frame *pCurFrame, Frame *pLastFrame, const vector<int> &ObjId, std::vector<int> &InlierID)
     {
-        float rp_thres = 0.04;  // 0.04 0.01
+        float rp_thres = 5.991;  // 0.04 0.01
         bool updateflow = true;
 
         g2o::SparseOptimizer optimizer;
         // optimizer.setVerbose(true);
-        g2o::BlockSolver_6_3::LinearSolverType * linearSolver;
+        g2o::BlockSolverX ::LinearSolverType * linearSolver;
 
-        linearSolver = new g2o::LinearSolverDense<g2o::BlockSolver_6_3::PoseMatrixType>();
+        linearSolver = new g2o::LinearSolverDense<g2o::BlockSolverX ::PoseMatrixType>();
 
-        g2o::BlockSolver_6_3 * solver_ptr = new g2o::BlockSolver_6_3(linearSolver);
+        g2o::BlockSolverX * solver_ptr = new g2o::BlockSolverX (linearSolver);
 
         g2o::OptimizationAlgorithmLevenberg* solver = new g2o::OptimizationAlgorithmLevenberg(solver_ptr);
 
@@ -2824,7 +2824,7 @@ namespace WeiSLAM
                 e->setVertex(1, dynamic_cast<g2o::OptimizableGraph::Vertex*>(optimizer.vertex(0)));
                 e->setMeasurement(obs_2d);
                 Eigen::Matrix2d info_flow;
-                info_flow << 0.1, 0.0, 0.0, 0.1;
+                info_flow << 0.2, 0.0, 0.0, 0.2;
                 e->setInformation(Eigen::Matrix2d::Identity()*info_flow);
 
                 g2o::RobustKernelHuber* rk = new g2o::RobustKernelHuber;
@@ -2860,7 +2860,7 @@ namespace WeiSLAM
                 e_con->setMeasurement(obs_flo);
                 // const float invSigma2_flo = 1.0;
                 Eigen::Matrix2d invSigma2_flo;
-                invSigma2_flo << 0.5, 0.0, 0.0, 0.5;
+                invSigma2_flo << 1.0, 0.0, 0.0, 1.0;
                 e_con->setInformation(Eigen::Matrix2d::Identity()*invSigma2_flo);
                 optimizer.addEdge(e_con);
 
@@ -2875,7 +2875,7 @@ namespace WeiSLAM
         // We perform 4 optimizations, after each optimization we classify observation as inlier/outlier
         // At the next optimization, outliers are not included, but at the end they can be classified as inliers again.
         const float chi2Mono[4]={rp_thres,5.991,5.991,5.991}; // {5.991,5.991,5.991,5.991} {4,4,4,4}
-        const int its[4]={200,100,100,100};
+        const int its[4]={200,200,200,200};
 
         int nBad=0;
         cout << endl;

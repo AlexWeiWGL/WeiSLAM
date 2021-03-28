@@ -90,6 +90,9 @@ namespace WeiSLAM{
 
             void RenewFrameInfo(const std::vector<int> &TM_sta);
             void UpdateMask();
+            void ReConstructAllPoints();
+            void ReConstructStatPoints();
+            void ReConstructObjPoints();
 
         public:
             enum eTrackingState{
@@ -118,7 +121,7 @@ namespace WeiSLAM{
             cv::Mat mImGrayLast;
 
             cv::Mat mFlowMap, mFlowMapLast;
-            cv::Mat mDepthMap;
+            //cv::Mat mDepthMap;
             cv::Mat mSegMap, mSegMapLast;
 
             //transfer the ground truth to use identity matrix as origin

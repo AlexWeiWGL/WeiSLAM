@@ -212,6 +212,9 @@ namespace WeiSLAM{
 
             vector<cv::KeyPoint> SampleKeyPoints(const int &rows, const int &cols);
             cv::Mat Calculate3D(cv::KeyPoint &vKey1, cv::KeyPoint &vKey2, cv::Mat &pose, cv::Mat K);
+            void ReOrgnizeAllPoint();
+            void ReOrgnizeObjPoint();
+            void ReOrgnizeStatPoint();
     };
 }
 
