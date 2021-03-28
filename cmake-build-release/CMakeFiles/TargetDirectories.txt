@@ -1,4 +1,0 @@
-/home/alexwei/CLionProjects/WeiSLAM/cmake-build-release/CMakeFiles/rebuild_cache.dir
-/home/alexwei/CLionProjects/WeiSLAM/cmake-build-release/CMakeFiles/wei_slam.dir
-/home/alexwei/CLionProjects/WeiSLAM/cmake-build-release/CMakeFiles/edit_cache.dir
-/home/alexwei/CLionProjects/WeiSLAM/cmake-build-release/CMakeFiles/WeiSLAM.dir
